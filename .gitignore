@@ -6,6 +6,7 @@
 .terraform.lock.hcl
 
 # Lambda zip
+*.zip
 lambda_src/**/*.zip
 
 # 空フォルダ残骸
