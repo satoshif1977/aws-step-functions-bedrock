@@ -1,0 +1,16 @@
+{
+  "Comment": "Lambda チェーン実行ワークフロー",
+  "StartAt": "Step1Transform",
+  "States": {
+    "Step1Transform": {
+      "Type": "Task",
+      "Resource": "${step1_arn}",
+      "Next": "Step2Format"
+    },
+    "Step2Format": {
+      "Type": "Task",
+      "Resource": "${step2_arn}",
+      "End": true
+    }
+  }
+}

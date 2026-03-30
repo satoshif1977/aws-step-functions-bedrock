@@ -1,0 +1,17 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform.lock.hcl
+
+# Lambda zip
+lambda_src/**/*.zip
+
+# 空フォルダ残骸
+lambda_src/**/step1_transform/
+lambda_src/**/step2_format/
+
+# OS
+.DS_Store
+Thumbs.db
