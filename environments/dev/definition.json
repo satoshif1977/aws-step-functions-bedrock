@@ -1,15 +1,75 @@
 {
-  "Comment": "Lambda チェーン実行ワークフロー",
+  "Comment": "Lambda チェーン + Bedrock 直接呼び出し + 条件分岐ワークフロー",
   "StartAt": "Step1Transform",
   "States": {
     "Step1Transform": {
       "Type": "Task",
       "Resource": "${step1_arn}",
+      "Comment": "テキスト加工（大文字変換・文字数カウント）",
+      "Next": "ClassifyByLength"
+    },
+    "ClassifyByLength": {
+      "Type": "Choice",
+      "Comment": "文字数で処理を分岐：20文字以下→簡潔回答 / それ以外→詳細回答",
+      "Choices": [
+        {
+          "Variable": "$.length",
+          "NumericLessThanEquals": 20,
+          "Next": "BedrockShortAnswer"
+        }
+      ],
+      "Default": "BedrockDetailAnswer"
+    },
+    "BedrockShortAnswer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::bedrock:invokeModel",
+      "Comment": "Bedrock 直接呼び出し（短い入力 → 一文で簡潔に回答）",
+      "Parameters": {
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+        "Body": {
+          "anthropic_version": "bedrock-2023-05-31",
+          "max_tokens": 200,
+          "messages": [
+            {
+              "role": "user",
+              "content.$": "States.Format('次のテキストに一文で簡潔に日本語で回答してください：{}', $.transformed)"
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "bedrock_answer.$": "$.Body.content[0].text",
+        "answer_type": "short"
+      },
+      "Next": "Step2Format"
+    },
+    "BedrockDetailAnswer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::bedrock:invokeModel",
+      "Comment": "Bedrock 直接呼び出し（長い入力 → 詳しく分析して回答）",
+      "Parameters": {
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+        "Body": {
+          "anthropic_version": "bedrock-2023-05-31",
+          "max_tokens": 500,
+          "messages": [
+            {
+              "role": "user",
+              "content.$": "States.Format('次のテキストについて詳しく日本語で分析・説明してください：{}', $.transformed)"
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "bedrock_answer.$": "$.Body.content[0].text",
+        "answer_type": "detail"
+      },
       "Next": "Step2Format"
     },
     "Step2Format": {
       "Type": "Task",
       "Resource": "${step2_arn}",
+      "Comment": "最終整形（Bedrock の回答を整えて出力）",
       "End": true
     }
   }
