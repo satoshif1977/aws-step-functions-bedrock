@@ -16,3 +16,6 @@ lambda_src/**/step2_format/
 # OS
 .DS_Store
 Thumbs.db
+
+# draw.io バックアップ
+.*.bkp

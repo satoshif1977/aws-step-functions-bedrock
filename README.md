@@ -24,6 +24,8 @@ Step 2: 最終整形（Lambda）
 
 ### AWS 構成図
 
+![アーキテクチャ構成図](docs/architecture.drawio.png)
+
 ```mermaid
 graph TD
     A[入力 message] --> B[Step1Transform\nLambda\n大文字変換・文字数カウント]
