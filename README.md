@@ -1,5 +1,9 @@
 # aws-step-functions-bedrock
 
+![CI](https://github.com/satoshif1977/aws-step-functions-bedrock/actions/workflows/terraform-ci.yml/badge.svg)
+![Terraform](https://img.shields.io/badge/Terraform-623CE4?style=flat&logo=terraform&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
 ![Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-orange?logo=anthropic)
 ![Claude Cowork](https://img.shields.io/badge/Daily%20Use-Claude%20Cowork-blueviolet?logo=anthropic)
 ![Claude Skills](https://img.shields.io/badge/Custom-Skills%20Configured-green?logo=anthropic)
@@ -193,3 +197,40 @@ aws-vault exec personal-dev-source -- terraform destroy
 | **カスタム Skills** | Terraform / Python / AWS に特化した Skills を設定・継続的に更新。自分の技術スタックに最適化したワークフローを構築 |
 
 > AI を「使う」だけでなく、自分の業務・技術スタックに合わせて**設定・運用・改善し続ける**ことを意識しています。
+
+---
+
+## CI / セキュリティスキャン
+
+GitHub Actions で Terraform の静的解析（Checkov）を自動実行しています。
+
+### 実施内容
+
+| ジョブ | 内容 |
+|---|---|
+| terraform fmt | フォーマット違反の検出 |
+| terraform validate | 構文・参照エラーの検出 |
+| Checkov セキュリティスキャン | IaC のセキュリティポリシー違反を検出（soft_fail: false） |
+
+### セキュリティ対応（Terraform で修正した内容）
+
+| リソース | 追加設定 |
+|---|---|
+| Lambda | `tracing_config { mode = "PassThrough" }`（X-Ray 有効化）・CloudWatch Logs グループ明示 |
+| Step Functions | CloudWatch Logs への実行ログ出力（ERROR レベル）・専用ロググループ |
+| IAM（Bedrock ポリシー） | `Resource` を特定モデル ARN に限定（ワイルドカード使用なし） |
+| CloudWatch Logs | 保持期間 30 日（変数化） |
+
+### 意図的にスキップしている項目（dev / PoC の合理的な省略）
+
+| チェック ID | 内容 | 理由 |
+|---|---|---|
+| CKV_AWS_117 | Lambda VPC 内配置 | dev/PoC では不要 |
+| CKV_AWS_272 | Lambda コード署名 | dev/PoC では不要 |
+| CKV_AWS_116 | Lambda DLQ 設定 | dev/PoC では不要 |
+| CKV_AWS_115 | Lambda 予約済み同時実行 | dev/PoC では不要 |
+| CKV_AWS_173 | Lambda 環境変数 KMS | dev/PoC では不要 |
+| CKV_AWS_158 | CloudWatch Logs KMS | dev/PoC では不要 |
+| CKV_AWS_338 | CloudWatch Logs 保持期間 1 年未満 | dev は 30 日で十分 |
+| CKV_AWS_290 | Step Functions X-Ray トレーシング未設定 | dev/PoC では不要 |
+| CKV_AWS_355 | Step Functions CMK 未設定 | dev/PoC では不要 |

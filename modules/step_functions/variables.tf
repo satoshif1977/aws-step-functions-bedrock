@@ -17,3 +17,9 @@ variable "definition" {
   description = "ステートマシン定義（JSON文字列）"
   type        = string
 }
+
+variable "log_retention_days" {
+  description = "CloudWatch Logs の保持日数（dev: 30, prod: 90 を推奨）"
+  type        = number
+  default     = 30
+}
