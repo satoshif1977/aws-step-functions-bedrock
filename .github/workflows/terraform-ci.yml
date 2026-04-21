@@ -45,5 +45,6 @@ jobs:
             CKV_AWS_116,CKV_AWS_115,
             CKV_AWS_173,CKV_AWS_158,
             CKV_AWS_338,CKV_AWS_290,
-            CKV_AWS_355
+            CKV_AWS_355,CKV_AWS_284,
+            CKV_AWS_285
           output_format: cli
