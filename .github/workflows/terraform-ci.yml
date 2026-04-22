@@ -26,6 +26,24 @@ jobs:
       - name: terraform validate
         run: terraform -chdir=environments/dev validate
 
+  pytest:
+    name: Python ユニットテスト
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pytest（Step1 + Step2 Lambda）
+        run: |
+          pip install pytest
+          python -m pytest \
+            lambda_src/sfn-step1-transform/test_step1_transform.py \
+            lambda_src/sfn-step2-format/test_step2_format.py \
+            -v
+
   security:
     name: Checkov セキュリティスキャン
     runs-on: ubuntu-latest
