@@ -6,7 +6,15 @@
       "Type": "Task",
       "Resource": "${step1_arn}",
       "Comment": "テキスト加工（大文字変換・文字数カウント）",
-      "Next": "ClassifyByLength"
+      "Next": "ClassifyByLength",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error",
+          "Comment": "Lambda 実行エラー（タイムアウト・権限不足・例外）をキャッチ"
+        }
+      ]
     },
     "ClassifyByLength": {
       "Type": "Choice",
@@ -41,7 +49,15 @@
         "bedrock_answer.$": "$.Body.content[0].text",
         "answer_type": "short"
       },
-      "Next": "Step2Format"
+      "Next": "Step2Format",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error",
+          "Comment": "Bedrock 呼び出しエラー（モデル制限・ThrottlingException 等）をキャッチ"
+        }
+      ]
     },
     "BedrockDetailAnswer": {
       "Type": "Task",
@@ -64,13 +80,35 @@
         "bedrock_answer.$": "$.Body.content[0].text",
         "answer_type": "detail"
       },
-      "Next": "Step2Format"
+      "Next": "Step2Format",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error",
+          "Comment": "Bedrock 呼び出しエラー（モデル制限・ThrottlingException 等）をキャッチ"
+        }
+      ]
     },
     "Step2Format": {
       "Type": "Task",
       "Resource": "${step2_arn}",
       "Comment": "最終整形（Bedrock の回答を整えて出力）",
-      "End": true
+      "End": true,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error",
+          "Comment": "Lambda 実行エラー（整形処理失敗）をキャッチ"
+        }
+      ]
+    },
+    "HandleError": {
+      "Type": "Fail",
+      "Comment": "全ステートの共通エラーハンドラ。$.error にエラー詳細が格納される",
+      "Error": "WorkflowFailed",
+      "Cause": "ワークフロー実行中にエラーが発生しました。CloudWatch Logs で $.error を確認してください。"
     }
   }
 }
