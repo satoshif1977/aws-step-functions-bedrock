@@ -167,7 +167,7 @@ aws-vault exec personal-dev-source -- terraform destroy
 
 ---
 
-## 面談で説明できるポイント
+## 技術的な見どころ
 
 - **Step Functions SDK 統合**: `arn:aws:states:::bedrock:invokeModel` を使い、**Lambda を介さず**直接 Bedrock を呼び出せる。コード不要でコスト・レイテンシを削減できる点が差別化ポイント
 - **Choice ステートによる条件分岐**: 入力の文字数に応じてプロンプト戦略を動的に切り替え。ルールベースの分岐を宣言的に定義できる
