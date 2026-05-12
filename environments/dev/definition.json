@@ -33,7 +33,7 @@
       "Resource": "arn:aws:states:::bedrock:invokeModel",
       "Comment": "Bedrock 直接呼び出し（短い入力 → 一文で簡潔に回答）",
       "Parameters": {
-        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0",
         "Body": {
           "anthropic_version": "bedrock-2023-05-31",
           "max_tokens": 200,
@@ -64,7 +64,7 @@
       "Resource": "arn:aws:states:::bedrock:invokeModel",
       "Comment": "Bedrock 直接呼び出し（長い入力 → 詳しく分析して回答）",
       "Parameters": {
-        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0",
         "Body": {
           "anthropic_version": "bedrock-2023-05-31",
           "max_tokens": 500,
