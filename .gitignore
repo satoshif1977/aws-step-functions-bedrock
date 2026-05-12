@@ -20,3 +20,7 @@ Thumbs.db
 
 # draw.io バックアップ
 .*.bkp
+
+# Python cache
+.ruff_cache/
+.pytest_cache/
