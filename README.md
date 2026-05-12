@@ -201,6 +201,56 @@ aws-vault exec personal-dev-source -- terraform destroy
 
 ---
 
+## トラブルシューティング
+
+| 症状 | 原因 | 対処法 |
+|---|---|---|
+| Step Functions 実行で `States.TaskFailed` | Bedrock への IAM 権限不足 | 実行ロールに `bedrock:InvokeModel`（特定モデル ARN）が付与されているか確認 |
+| BedrockShortAnswer ステートがスキップされる | Choice ステートの条件式エラー | `definition.json` の `$.length <= 20` と Lambda 出力の `length` キーが一致しているか確認 |
+| Lambda のログが CloudWatch に出ない | ロググループが未作成 | `terraform apply` で `/aws/lambda/<function-name>` が作成されているか確認 |
+| `terraform destroy` で Step Functions が残る | 実行中のステートマシンがある | コンソールで実行を手動停止してから `destroy` を再実行 |
+
+---
+
+## ローカル開発・テスト方法
+
+### Step Functions をコンソールから手動実行
+
+```bash
+# terraform apply 後、コンソール → Step Functions → ステートマシン → 「実行を開始」
+
+# 短いテキスト（BedrockShortAnswer ルート）
+# 入力: {"message": "こんにちは"}
+
+# 長いテキスト（BedrockDetailAnswer ルート）
+# 入力: {"message": "クラウドコンピューティングの将来について教えてください"}
+```
+
+### Lambda 関数の単体テスト
+
+```bash
+# Step1Transform Lambda を直接呼び出し
+aws-vault exec personal-dev-source -- aws lambda invoke \
+  --function-name sfn-step1-transform-dev \
+  --payload '{"message": "hello world"}' \
+  response.json
+cat response.json
+# 期待値: {"transformed": "HELLO WORLD", "length": 11}
+```
+
+### Python コードのローカル確認
+
+```bash
+cd lambda_src/sfn-step1-transform
+python -c "
+import lambda_function
+result = lambda_function.lambda_handler({'message': 'hello'}, None)
+print(result)
+"
+```
+
+---
+
 ## CI / セキュリティスキャン
 
 GitHub Actions で Terraform の静的解析（Checkov）を自動実行しています。
