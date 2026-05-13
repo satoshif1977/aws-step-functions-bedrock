@@ -1,0 +1,343 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Step Functions + Lambda + Bedrock 統合ワークフロー。
+  aws-step-functions-bedrock の Terraform 版と同等の構成を
+  CloudFormation で実装。Terraform との比較学習用。
+
+# ── パラメータ ────────────────────────────────────────────────────────────
+Parameters:
+
+  ProjectName:
+    Type: String
+    Default: sfn-bedrock
+    Description: プロジェクト名（リソース命名プレフィックス）
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, stg, prod]
+    Description: 環境名
+
+  LambdaRuntime:
+    Type: String
+    Default: python3.11
+    AllowedValues: [python3.11, python3.12]
+    Description: Lambda ランタイム（python3.11 推奨）
+
+  BedrockModelId:
+    Type: String
+    Default: arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0
+    Description: Bedrock モデル ARN（Claude 3.5 Haiku デフォルト）
+
+# ── リソース ─────────────────────────────────────────────────────────────
+Resources:
+
+  # ── 1. IAM ロール（Lambda 実行用）────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ── 2. IAM ロール（Step Functions 実行用）────────────────────────────
+  # Terraform 版: modules/step_functions 内で定義
+  StepFunctionsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-sfn-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${ProjectName}-${Environment}-sfn-policy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Lambda 呼び出し権限
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt Step1TransformFunction.Arn
+                  - !GetAtt Step2FormatFunction.Arn
+              # Bedrock 呼び出し権限（ステートマシンから直接呼び出し）
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Ref BedrockModelId
+              # CloudWatch Logs への書き込み
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*" # TODO: 本番では特定ロググループ ARN に絞ること
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ── 3. CloudWatch Logs グループ（Lambda）────────────────────────────
+  Step1LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProjectName}-${Environment}-step1-transform"
+      RetentionInDays: 14
+
+  Step2LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ProjectName}-${Environment}-step2-format"
+      RetentionInDays: 14
+
+  SfnLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/states/${ProjectName}-${Environment}-workflow"
+      RetentionInDays: 14
+
+  # ── 4. Lambda 関数 ───────────────────────────────────────────────────
+
+  # Step1: テキスト加工（大文字変換・文字数カウント）
+  # Terraform 版: module "lambda_step1" { source = "../../modules/lambda" }
+  Step1TransformFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: Step1LogGroup
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}-step1-transform"
+      Runtime: !Ref LambdaRuntime
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      TracingConfig:
+        Mode: PassThrough  # dev: 無料。本番で監視が必要な場合のみ Active に変更
+      Code:
+        # インライン定義（Python版と同等。実際のデプロイは zip アップロードを推奨）
+        ZipFile: |
+          def lambda_handler(event, context):
+              text = event.get("message", "Hello")
+              return {
+                  "original": text,
+                  "transformed": text.upper(),
+                  "length": len(text)
+              }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Step2: 最終整形（Bedrock の回答にラベルを付けて返す）
+  Step2FormatFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: Step2LogGroup
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${Environment}-step2-format"
+      Runtime: !Ref LambdaRuntime
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      TracingConfig:
+        Mode: PassThrough
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              bedrock_answer = event.get("bedrock_answer", "")
+              answer_type = event.get("answer_type", "unknown")
+              label = "簡潔回答" if answer_type == "short" else "詳細回答"
+              return {
+                  "result": f"[{label}] {bedrock_answer}",
+                  "answer_type": answer_type,
+                  "status": "success"
+              }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ── 5. Step Functions ステートマシン ────────────────────────────────
+  # Terraform 版: definition.json を templatefile() でレンダリング
+  # CFn 版: !Sub で Lambda ARN を埋め込む（Terraform の ${step1_arn} 相当）
+  WorkflowStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    DependsOn: SfnLogGroup
+    Properties:
+      StateMachineName: !Sub "${ProjectName}-${Environment}-workflow"
+      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
+      StateMachineType: STANDARD
+      LoggingConfiguration:
+        Level: ERROR
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt SfnLogGroup.Arn
+      # Terraform 版の definition.json と同等の ASL 定義
+      # !Sub で Lambda ARN を動的に埋め込む（Terraform の templatefile に相当）
+      DefinitionString: !Sub |
+        {
+          "Comment": "Lambda チェーン + Bedrock 直接呼び出し + 条件分岐ワークフロー",
+          "StartAt": "Step1Transform",
+          "States": {
+            "Step1Transform": {
+              "Type": "Task",
+              "Resource": "${Step1TransformFunction.Arn}",
+              "Comment": "テキスト加工（大文字変換・文字数カウント）",
+              "Next": "ClassifyByLength",
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "HandleError",
+                  "ResultPath": "$.error"
+                }
+              ]
+            },
+            "ClassifyByLength": {
+              "Type": "Choice",
+              "Comment": "文字数で処理を分岐：20文字以下→簡潔回答 / それ以外→詳細回答",
+              "Choices": [
+                {
+                  "Variable": "$.length",
+                  "NumericLessThanEquals": 20,
+                  "Next": "BedrockShortAnswer"
+                }
+              ],
+              "Default": "BedrockDetailAnswer"
+            },
+            "BedrockShortAnswer": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::bedrock:invokeModel",
+              "Comment": "Bedrock 直接呼び出し（短い入力 → 一文で簡潔に回答）",
+              "Parameters": {
+                "ModelId": "${BedrockModelId}",
+                "Body": {
+                  "anthropic_version": "bedrock-2023-05-31",
+                  "max_tokens": 200,
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content.$": "States.Format('次のテキストに一文で簡潔に日本語で回答してください：{}', $.transformed)"
+                    }
+                  ]
+                }
+              },
+              "ResultSelector": {
+                "bedrock_answer.$": "$.Body.content[0].text",
+                "answer_type": "short"
+              },
+              "Next": "Step2Format",
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "HandleError",
+                  "ResultPath": "$.error"
+                }
+              ]
+            },
+            "BedrockDetailAnswer": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::bedrock:invokeModel",
+              "Comment": "Bedrock 直接呼び出し（長い入力 → 詳しく分析して回答）",
+              "Parameters": {
+                "ModelId": "${BedrockModelId}",
+                "Body": {
+                  "anthropic_version": "bedrock-2023-05-31",
+                  "max_tokens": 500,
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content.$": "States.Format('次のテキストについて詳しく日本語で分析・説明してください：{}', $.transformed)"
+                    }
+                  ]
+                }
+              },
+              "ResultSelector": {
+                "bedrock_answer.$": "$.Body.content[0].text",
+                "answer_type": "detail"
+              },
+              "Next": "Step2Format",
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "HandleError",
+                  "ResultPath": "$.error"
+                }
+              ]
+            },
+            "Step2Format": {
+              "Type": "Task",
+              "Resource": "${Step2FormatFunction.Arn}",
+              "Comment": "最終整形（Bedrock の回答を整えて出力）",
+              "End": true,
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "HandleError",
+                  "ResultPath": "$.error"
+                }
+              ]
+            },
+            "HandleError": {
+              "Type": "Fail",
+              "Error": "WorkflowFailed",
+              "Cause": "ワークフロー実行中にエラーが発生しました。CloudWatch Logs で $.error を確認してください。"
+            }
+          }
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+# ── 出力 ─────────────────────────────────────────────────────────────────
+Outputs:
+
+  StateMachineArn:
+    Description: Step Functions ステートマシン ARN
+    Value: !Ref WorkflowStateMachine
+
+  StateMachineUrl:
+    Description: Step Functions コンソール URL
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/states/home#/statemachines/view/${WorkflowStateMachine}"
+
+  Step1FunctionArn:
+    Description: Step1 Lambda 関数 ARN
+    Value: !GetAtt Step1TransformFunction.Arn
+
+  Step2FunctionArn:
+    Description: Step2 Lambda 関数 ARN
+    Value: !GetAtt Step2FormatFunction.Arn
