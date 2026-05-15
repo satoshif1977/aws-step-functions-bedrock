@@ -177,6 +177,75 @@ aws-vault exec personal-dev-source -- terraform destroy
 
 ---
 
+## ステートマシン定義（ASL）
+
+`environments/dev/definition.json` に定義されたステートマシンの構造です。Terraform の `templatefile()` で Lambda ARN を動的に埋め込み、5つのステートで完全なワークフローを構成しています。
+
+```json
+{
+  "Comment": "Lambda チェーン + Bedrock 直接呼び出し + 条件分岐ワークフロー",
+  "StartAt": "Step1Transform",
+  "States": {
+    "Step1Transform": {
+      "Type": "Task",
+      "Resource": "<Step1TransformLambdaARN>",
+      "Next": "ClassifyByLength",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "HandleError", "ResultPath": "$.error" }]
+    },
+    "ClassifyByLength": {
+      "Type": "Choice",
+      "Choices": [{ "Variable": "$.length", "NumericLessThanEquals": 20, "Next": "BedrockShortAnswer" }],
+      "Default": "BedrockDetailAnswer"
+    },
+    "BedrockShortAnswer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::bedrock:invokeModel",
+      "Parameters": {
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0",
+        "Body": {
+          "anthropic_version": "bedrock-2023-05-31",
+          "max_tokens": 200,
+          "messages": [{ "role": "user", "content.$": "States.Format('次のテキストに一文で簡潔に日本語で回答してください：{}', $.transformed)" }]
+        }
+      },
+      "ResultSelector": { "bedrock_answer.$": "$.Body.content[0].text", "answer_type": "short" },
+      "Next": "Step2Format",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "HandleError", "ResultPath": "$.error" }]
+    },
+    "BedrockDetailAnswer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::bedrock:invokeModel",
+      "Parameters": {
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0",
+        "Body": {
+          "anthropic_version": "bedrock-2023-05-31",
+          "max_tokens": 500,
+          "messages": [{ "role": "user", "content.$": "States.Format('次のテキストについて詳しく日本語で分析・説明してください：{}', $.transformed)" }]
+        }
+      },
+      "ResultSelector": { "bedrock_answer.$": "$.Body.content[0].text", "answer_type": "detail" },
+      "Next": "Step2Format",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "HandleError", "ResultPath": "$.error" }]
+    },
+    "Step2Format": {
+      "Type": "Task",
+      "Resource": "<Step2FormatLambdaARN>",
+      "End": true,
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "HandleError", "ResultPath": "$.error" }]
+    },
+    "HandleError": {
+      "Type": "Fail",
+      "Error": "WorkflowFailed",
+      "Cause": "ワークフロー実行中にエラーが発生しました。CloudWatch Logs で $.error を確認してください。"
+    }
+  }
+}
+```
+
+> **ポイント**: `BedrockShortAnswer` / `BedrockDetailAnswer` の `Resource` が `arn:aws:states:::bedrock:invokeModel` — Lambda ARN ではなく SDK 統合の特殊 ARN を指定することで Lambda コードなしに Bedrock を直接呼び出しています。
+
+---
+
 ## コスト目安
 
 | リソース | 概算 |
