@@ -1,5 +1,8 @@
 import importlib.util
+import json
 import os
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 # 同名モジュールの衝突を避けるため importlib で直接パス指定してロード
@@ -12,11 +15,21 @@ _spec.loader.exec_module(_mod)
 lambda_handler = _mod.lambda_handler
 
 
-class TestStep2Format:
-    """Step2Format Lambda: Bedrock 回答の最終整形のテスト"""
+def _make_bedrock_response(text: str) -> dict:
+    """Bedrock invoke_model の戻り値をモックするヘルパー"""
+    body_bytes = json.dumps({"content": [{"text": text}]}).encode()
+    mock_body = MagicMock()
+    mock_body.read.return_value = body_bytes
+    return {"body": mock_body}
 
-    def _invoke(self, event: dict) -> dict:
-        return lambda_handler(event, context=None)
+
+class TestStep2Format:
+    """Step2Format Lambda: Bedrock による回答整形のテスト"""
+
+    def _invoke(self, event: dict, bedrock_response: str = "整形済み回答") -> dict:
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response(bedrock_response)
+            return lambda_handler(event, context=None)
 
     # ── 正常系 ─────────────────────────────────────────
 
@@ -30,15 +43,15 @@ class TestStep2Format:
         result = self._invoke({"bedrock_answer": "詳しく説明します。", "answer_type": "detail"})
         assert result["result"].startswith("[詳細回答]")
 
-    def test_result_contains_bedrock_answer(self):
-        """result に bedrock_answer の内容が含まれること"""
-        answer = "テスト回答テキスト"
-        result = self._invoke({"bedrock_answer": answer, "answer_type": "short"})
-        assert answer in result["result"]
+    def test_result_contains_refined_answer(self):
+        """result に Bedrock が返した整形済み回答が含まれること"""
+        refined = "まとめた回答テキスト"
+        result = self._invoke({"bedrock_answer": "元の回答", "answer_type": "short"}, bedrock_response=refined)
+        assert refined in result["result"]
 
     def test_result_format(self):
-        """result が '[ラベル] 回答' の形式であること"""
-        result = self._invoke({"bedrock_answer": "晴れです。", "answer_type": "short"})
+        """result が '[ラベル] 整形済み回答' の形式であること"""
+        result = self._invoke({"bedrock_answer": "晴れです。", "answer_type": "short"}, bedrock_response="晴れです。")
         assert result["result"] == "[簡潔回答] 晴れです。"
 
     def test_status_is_always_success(self):
@@ -56,12 +69,34 @@ class TestStep2Format:
         result = self._invoke({"bedrock_answer": "test", "answer_type": "short"})
         assert set(result.keys()) == {"result", "answer_type", "status"}
 
-    # ── デフォルト値 ──────────────────────────────────
+    # ── Bedrock プロンプト検証 ─────────────────────────
 
-    def test_default_bedrock_answer_when_missing(self):
-        """bedrock_answer がない場合は空文字が使われること"""
-        result = self._invoke({"answer_type": "short"})
-        assert result["result"] == "[簡潔回答] "
+    def test_bedrock_called_with_short_prompt(self):
+        """answer_type=short のとき 簡潔 を含むプロンプトで Bedrock が呼ばれること"""
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
+            lambda_handler({"bedrock_answer": "元の回答", "answer_type": "short"}, context=None)
+            body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
+            assert "簡潔" in body["messages"][0]["content"]
+
+    def test_bedrock_called_with_detail_prompt(self):
+        """answer_type=detail のとき 箇条書き を含むプロンプトで Bedrock が呼ばれること"""
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
+            lambda_handler({"bedrock_answer": "元の回答", "answer_type": "detail"}, context=None)
+            body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
+            assert "箇条書き" in body["messages"][0]["content"]
+
+    def test_bedrock_prompt_contains_original_answer(self):
+        """Bedrock へのプロンプトに Step1 の回答が含まれること"""
+        original = "Step1からの回答テキスト"
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
+            lambda_handler({"bedrock_answer": original, "answer_type": "short"}, context=None)
+            body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
+            assert original in body["messages"][0]["content"]
+
+    # ── デフォルト値 ──────────────────────────────────
 
     def test_default_answer_type_when_missing(self):
         """answer_type がない場合は 'unknown' として詳細回答ラベルになること"""
@@ -72,12 +107,14 @@ class TestStep2Format:
     # ── 境界値 ────────────────────────────────────────
 
     def test_unknown_answer_type_uses_detail_label(self):
-        """answer_type が short 以外（unknown など）のとき 詳細回答 ラベルになること"""
+        """answer_type が short 以外（unknown など）のとき詳細回答ラベルになること"""
         result = self._invoke({"bedrock_answer": "test", "answer_type": "unknown"})
         assert result["result"].startswith("[詳細回答]")
 
-    def test_empty_bedrock_answer(self):
-        """bedrock_answer が空文字のとき status は success のまま"""
-        result = self._invoke({"bedrock_answer": "", "answer_type": "short"})
+    def test_empty_bedrock_answer_skips_bedrock(self):
+        """bedrock_answer が空のときは Bedrock を呼ばず status=success を返すこと"""
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            result = lambda_handler({"bedrock_answer": "", "answer_type": "short"}, context=None)
+            mock_bedrock.invoke_model.assert_not_called()
         assert result["status"] == "success"
         assert result["result"] == "[簡潔回答] "
