@@ -23,6 +23,13 @@ resource "aws_lambda_function" "this" {
   handler          = "lambda_function.lambda_handler"
   runtime          = "python3.12"
 
+  dynamic "environment" {
+    for_each = length(var.env_vars) > 0 ? [1] : []
+    content {
+      variables = var.env_vars
+    }
+  }
+
   tracing_config {
     mode = "PassThrough"
   }

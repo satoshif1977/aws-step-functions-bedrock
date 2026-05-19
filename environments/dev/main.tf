@@ -40,6 +40,26 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Bedrock 呼び出し権限（step1: 質問応答 / step2: 回答整形）
+resource "aws_iam_role_policy" "lambda_bedrock" {
+  name = "${var.project}-${var.environment}-bedrock-policy"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ]
+        Resource = "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0"
+      }
+    ]
+  })
+}
+
 # Lambda モジュール × 2
 module "lambda_step1" {
   source          = "../../modules/lambda"
@@ -47,6 +67,9 @@ module "lambda_step1" {
   lambda_role_arn = aws_iam_role.lambda_role.arn
   environment     = var.environment
   project         = var.project
+  env_vars = {
+    MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
+  }
 }
 
 module "lambda_step2" {
@@ -55,6 +78,9 @@ module "lambda_step2" {
   lambda_role_arn = aws_iam_role.lambda_role.arn
   environment     = var.environment
   project         = var.project
+  env_vars = {
+    MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
+  }
 }
 
 # Step Functions モジュール

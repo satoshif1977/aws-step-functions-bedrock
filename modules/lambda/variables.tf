@@ -23,3 +23,9 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+variable "env_vars" {
+  description = "Lambda 環境変数（省略可）"
+  type        = map(string)
+  default     = {}
+}
