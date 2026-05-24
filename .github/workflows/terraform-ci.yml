@@ -38,7 +38,7 @@ jobs:
 
       - name: pytest（Step1 + Step2 Lambda）
         run: |
-          pip install pytest
+          pip install pytest boto3
           python -m pytest \
             lambda_src/sfn-step1-transform/test_step1_transform.py \
             lambda_src/sfn-step2-format/test_step2_format.py \
