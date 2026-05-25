@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-25
+
+### Added
+- EventBridge Pipes 統合（`modules/pipes/`）
+  - SQS キューをソースとし、message.exists フィルターで Step Functions を自動起動
+  - 起動方式: `FIRE_AND_FORGET`（非同期・低レイテンシ）
+  - Terraform モジュール: `aws_pipes_pipe` + `aws_sqs_queue` + IAM ロール/ポリシー
+- Express Workflow 追加（`modules/step_functions/` 拡張）
+  - Standard Workflow との並置実装（`count` 条件付きリソース）
+  - ログ設定: `level = "ALL"` / `include_execution_data = true`
+  - CloudWatch Logs グループを専用で作成
+  - 同一 Lambda を Standard/Express 両方から呼び出し可能な設計
+- TypeScript 並置実装（`lambda_ts/`）
+  - `step1_transform`: 大文字変換 + Unicode 文字数カウント（サロゲートペア対応 `[...str].length`）
+  - `step2_format`: ラベル付き整形（`resolveLabel` / `formatResult`）
+  - Jest 18 テスト・カバレッジ 100%（`npx jest --coverage`）
+  - TypeScript 型チェック（`npx tsc --noEmit`）
+- GitHub Actions CI ワークフロー（`.github/workflows/ts-test.yml`）
+  - Node.js 20 / npm install / tsc / Jest を Ubuntu で自動実行
+
+### Changed
+- Standard Workflow のラベルを明示化（`type = "STANDARD"` 追加）
+- `modules/step_functions/variables.tf` に `express_definition` / `enable_express` 変数追加
+- `environments/dev/main.tf` に Express Workflow モジュール + Pipes モジュールを統合
+- `environments/dev/definition_express.json` 追加（Express 専用 ASL 定義 / Retry MaxAttempts=2）
+- README に バッジ3種追加（Go Test / TS Test / TypeScript）
+- README アーキテクチャセクション更新（Pipes + Standard vs Express 比較表）
+
 ## [1.2.0] - 2026-05-19
 
 ### Fixed

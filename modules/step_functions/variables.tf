@@ -23,3 +23,9 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+variable "express_definition" {
+  description = "Express Workflow 定義（JSON文字列）。空文字の場合は作成しない"
+  type        = string
+  default     = ""
+}

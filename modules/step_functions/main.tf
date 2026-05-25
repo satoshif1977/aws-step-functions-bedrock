@@ -82,6 +82,7 @@ resource "aws_iam_role_policy" "sfn_logs_policy" {
 resource "aws_sfn_state_machine" "this" {
   name     = "${var.project}-${var.environment}-sfn"
   role_arn = aws_iam_role.sfn_role.arn
+  type     = "STANDARD"
 
   definition = var.definition
 
@@ -89,6 +90,42 @@ resource "aws_sfn_state_machine" "this" {
     log_destination        = "${aws_cloudwatch_log_group.sfn.arn}:*"
     include_execution_data = false
     level                  = "ERROR"
+  }
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project
+    ManagedBy   = "Terraform"
+  }
+}
+
+# ── Express Workflow（Standard との比較用）────────────────────
+# 特徴: 短時間・高頻度・低コスト / 実行履歴は CloudWatch Logs のみ
+resource "aws_cloudwatch_log_group" "sfn_express" {
+  count             = var.express_definition != "" ? 1 : 0
+  name              = "/aws/states/${var.project}-${var.environment}-sfn-express"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Environment = var.environment
+    Project     = var.project
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_sfn_state_machine" "express" {
+  count    = var.express_definition != "" ? 1 : 0
+  name     = "${var.project}-${var.environment}-sfn-express"
+  role_arn = aws_iam_role.sfn_role.arn
+  type     = "EXPRESS"
+
+  definition = var.express_definition
+
+  # Express は ALL レベルでログを取ることで実行結果を確認できる
+  logging_configuration {
+    log_destination        = "${aws_cloudwatch_log_group.sfn_express[0].arn}:*"
+    include_execution_data = true
+    level                  = "ALL"
   }
 
   tags = {

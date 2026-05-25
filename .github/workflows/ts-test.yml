@@ -1,0 +1,45 @@
+name: TypeScript Test
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'lambda_ts/**'
+      - '.github/workflows/ts-test.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'lambda_ts/**'
+      - '.github/workflows/ts-test.yml'
+
+jobs:
+  test:
+    name: TypeScript ユニットテスト
+    runs-on: ubuntu-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    defaults:
+      run:
+        working-directory: lambda_ts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: lambda_ts/package.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Jest テスト（カバレッジ付き）
+        run: npx jest --coverage

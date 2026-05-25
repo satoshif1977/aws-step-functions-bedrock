@@ -83,7 +83,7 @@ module "lambda_step2" {
   }
 }
 
-# Step Functions モジュール
+# Step Functions モジュール（Standard + Express）
 module "step_functions" {
   source      = "../../modules/step_functions"
   project     = var.project
@@ -93,8 +93,23 @@ module "step_functions" {
     module.lambda_step2.function_arn
   ]
 
+  # Standard Workflow: 実行履歴を90日保持・長時間ジョブ向け
   definition = templatefile("${path.module}/definition.json", {
     step1_arn = module.lambda_step1.function_arn
     step2_arn = module.lambda_step2.function_arn
   })
+
+  # Express Workflow: 短時間・高頻度・低コスト（Standard との比較用）
+  express_definition = templatefile("${path.module}/definition_express.json", {
+    step1_arn = module.lambda_step1.function_arn
+    step2_arn = module.lambda_step2.function_arn
+  })
+}
+
+# ── Pipes モジュール（SQS → Step Functions 直接起動）─────────
+module "pipes" {
+  source            = "../../modules/pipes"
+  project           = var.project
+  environment       = var.environment
+  state_machine_arn = module.step_functions.state_machine_arn
 }

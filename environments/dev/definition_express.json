@@ -1,0 +1,118 @@
+{
+  "Comment": "Express Workflow版: 短時間・高頻度処理向け（Standard との比較用）",
+  "StartAt": "Step1Transform",
+  "States": {
+    "Step1Transform": {
+      "Type": "Task",
+      "Resource": "${step1_arn}",
+      "Comment": "テキスト加工（Bedrock で回答生成・文字数カウント）",
+      "Next": "ClassifyByLength",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2,
+          "Comment": "Express は短時間実行前提のため MaxAttempts を 2 に絞る"
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "ClassifyByLength": {
+      "Type": "Choice",
+      "Comment": "文字数で分岐: 20文字以下→簡潔 / それ以外→詳細",
+      "Choices": [
+        {
+          "Variable": "$.length",
+          "NumericLessThanEquals": 20,
+          "Next": "BedrockShortAnswer"
+        }
+      ],
+      "Default": "BedrockDetailAnswer"
+    },
+    "BedrockShortAnswer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::bedrock:invokeModel",
+      "Comment": "Bedrock 直接呼び出し（短い入力 → 一文で回答）",
+      "Parameters": {
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0",
+        "Body": {
+          "anthropic_version": "bedrock-2023-05-31",
+          "max_tokens": 200,
+          "messages": [
+            {
+              "role": "user",
+              "content.$": "States.Format('次のテキストに一文で簡潔に日本語で回答してください：{}', $.transformed)"
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "bedrock_answer.$": "$.Body.content[0].text",
+        "answer_type": "short"
+      },
+      "Next": "Step2Format",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "BedrockDetailAnswer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::bedrock:invokeModel",
+      "Comment": "Bedrock 直接呼び出し（長い入力 → 詳しく回答）",
+      "Parameters": {
+        "ModelId": "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0",
+        "Body": {
+          "anthropic_version": "bedrock-2023-05-31",
+          "max_tokens": 500,
+          "messages": [
+            {
+              "role": "user",
+              "content.$": "States.Format('次のテキストについて詳しく日本語で分析・説明してください：{}', $.transformed)"
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "bedrock_answer.$": "$.Body.content[0].text",
+        "answer_type": "detail"
+      },
+      "Next": "Step2Format",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "Step2Format": {
+      "Type": "Task",
+      "Resource": "${step2_arn}",
+      "Comment": "最終整形（Express は同期結果を返さないため CW Logs で確認）",
+      "End": true,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError",
+          "ResultPath": "$.error"
+        }
+      ]
+    },
+    "HandleError": {
+      "Type": "Fail",
+      "Error": "WorkflowFailed",
+      "Cause": "Express Workflow 実行中にエラーが発生しました。"
+    }
+  }
+}
