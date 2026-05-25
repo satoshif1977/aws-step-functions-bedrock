@@ -7,7 +7,7 @@ resource "aws_sqs_queue" "source" {
   name                       = "${var.project}-${var.environment}-pipe-source"
   message_retention_seconds  = 86400 # 1日
   visibility_timeout_seconds = 60
-  sqs_managed_sse_enabled    = true  # SSE-SQS 暗号化（無料・CKV_AWS_27 対応）
+  sqs_managed_sse_enabled    = true # SSE-SQS 暗号化（無料・CKV_AWS_27 対応）
 
   tags = {
     Environment = var.environment
