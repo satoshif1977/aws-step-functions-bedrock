@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-05-28
+
+### Changed
+- `hashicorp/aws` プロバイダー v5 → v6（Dependabot PR #10）
+  - `terraform plan` にて 0 change / 0 destroy を確認済み（破壊的変更なし）
+  - `required_providers` バージョン制約を `~> 5.0` → `~> 6.46` に更新
+
 ## [2.1.0] - 2026-05-28
 
 ### Changed
