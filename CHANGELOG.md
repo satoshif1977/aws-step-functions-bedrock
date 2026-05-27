@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-05-28
+
+### Changed
+- GitHub Actions CI アクション更新（Dependabot PR #1/#3/#4/#6/#9）
+  - `hashicorp/setup-terraform` v3 → v4
+  - `actions/checkout` v4 → v6
+  - `actions/setup-python` v5 → v6
+  - `actions/setup-go` v5 → v6
+  - `actions/setup-node` v4 → v6
+
 ## [2.0.0] - 2026-05-25
 
 ### Added
