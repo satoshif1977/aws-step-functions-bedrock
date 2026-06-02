@@ -54,7 +54,11 @@ resource "aws_iam_role_policy" "lambda_bedrock" {
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
         ]
-        Resource = "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0"
+        # foundation-model（直接呼び出し）と inference-profile（クロスリージョン推論）の両方を許可
+        Resource = [
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.*",
+          "arn:aws:bedrock:${var.aws_region}:*:inference-profile/*",
+        ]
       }
     ]
   })
@@ -68,7 +72,8 @@ module "lambda_step1" {
   environment     = var.environment
   project         = var.project
   env_vars = {
-    MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    # クロスリージョン推論プロファイル（Haiku 4.5 / 日本リージョン最適化）
+    MODEL_ID = "jp.anthropic.claude-haiku-4-5-20251001-v1:0"
   }
 }
 
@@ -79,7 +84,8 @@ module "lambda_step2" {
   environment     = var.environment
   project         = var.project
   env_vars = {
-    MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    # クロスリージョン推論プロファイル（Haiku 4.5 / 日本リージョン最適化）
+    MODEL_ID = "jp.anthropic.claude-haiku-4-5-20251001-v1:0"
   }
 }
 
@@ -88,6 +94,7 @@ module "step_functions" {
   source      = "../../modules/step_functions"
   project     = var.project
   environment = var.environment
+  aws_region  = var.aws_region
   lambda_arns = [
     module.lambda_step1.function_arn,
     module.lambda_step2.function_arn

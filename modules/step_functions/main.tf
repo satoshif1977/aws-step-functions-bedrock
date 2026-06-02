@@ -32,9 +32,13 @@ resource "aws_iam_role_policy" "sfn_lambda_policy" {
         Resource = var.lambda_arns
       },
       {
-        Effect   = "Allow"
-        Action   = "bedrock:InvokeModel"
-        Resource = "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0"
+        Effect = "Allow"
+        Action = "bedrock:InvokeModel"
+        # foundation-model（直接呼び出し）と inference-profile（クロスリージョン推論）の両方を許可
+        Resource = [
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.*",
+          "arn:aws:bedrock:${var.aws_region}:*:inference-profile/*",
+        ]
       }
     ]
   })

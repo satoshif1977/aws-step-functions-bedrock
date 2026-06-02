@@ -1,3 +1,9 @@
+variable "aws_region" {
+  description = "AWS リージョン（Bedrock IAM Resource ARN に使用）"
+  type        = string
+  default     = "ap-northeast-1"
+}
+
 variable "project" {
   description = "プロジェクト名"
   type        = string
