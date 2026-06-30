@@ -141,6 +141,10 @@ aws-step-functions-bedrock/
 │       └── step2_format/     # index.ts + index.test.ts
 ├── cloudformation/
 │   └── template.yaml         # CloudFormation 版（Terraform との比較用）
+├── scripts/
+│   ├── verify_stack.py       # Python 版スタック検証（Lambda・Logs・Step Functions）
+│   ├── test_verify_stack.py  # pytest テスト（30件・MagicMock）
+│   └── requirements-dev.txt  # pytest + boto3
 └── README.md
 ```
 
@@ -358,7 +362,19 @@ cat response.json
 
 ### Python コードのローカル確認
 
+```bash
+pip install pytest boto3
+cd scripts
+pytest test_verify_stack.py -v
+# 30件 PASS（Lambda・CloudWatch Logs・Step Functions 検証関数を MagicMock でテスト）
+```
 
+デプロイ後の実環境検証は：
+
+```bash
+pip install boto3
+python scripts/verify_stack.py --profile personal-dev-source --project sfn-bedrock --env dev
+```
 
 ### Go テスト
 
