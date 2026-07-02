@@ -40,6 +40,39 @@ func TestFormatResultEmpty(t *testing.T) {
 	}
 }
 
+func TestFormatResultLabelFormat(t *testing.T) {
+	// フォーマットが "[ラベル] 回答" 形式であることを確認
+	got := formatResult("short", "テスト回答")
+	expected := "[簡潔回答] テスト回答"
+	if got != expected {
+		t.Errorf("フォーマット: 期待 %q, 実際 %q", expected, got)
+	}
+}
+
+func TestFormatResultDetailLabelFormat(t *testing.T) {
+	got := formatResult("detail", "詳細テスト")
+	expected := "[詳細回答] 詳細テスト"
+	if got != expected {
+		t.Errorf("詳細フォーマット: 期待 %q, 実際 %q", expected, got)
+	}
+}
+
+func TestFormatResultEmptyTypeFallsToDetail(t *testing.T) {
+	// answer_type が空文字の場合も詳細回答にフォールバックする
+	got := formatResult("", "回答テキスト")
+	if !strings.HasPrefix(got, "[詳細回答]") {
+		t.Errorf("空の type は [詳細回答] にフォールバックすること: %q", got)
+	}
+}
+
+func TestFormatResultLongAnswer(t *testing.T) {
+	long := strings.Repeat("あ", 1000)
+	got := formatResult("short", long)
+	if !strings.Contains(got, long) {
+		t.Error("長い回答文字列が結果に含まれていること")
+	}
+}
+
 // ── ハンドラーテスト ──────────────────────────────────────────
 
 func TestHandlerShortAnswer(t *testing.T) {
@@ -84,5 +117,27 @@ func TestHandlerStatusAlwaysSuccess(t *testing.T) {
 	}
 	if resp.Status != "success" {
 		t.Errorf("Status は常に success であること: %q", resp.Status)
+	}
+}
+
+func TestHandlerAnswerTypePreserved(t *testing.T) {
+	// レスポンスの AnswerType にイベントの値がそのまま保持されること
+	resp, err := handler(nil, Event{BedrockAnswer: "回答", AnswerType: "detail"})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if resp.AnswerType != "detail" {
+		t.Errorf("AnswerType は入力値を保持すること: 期待 detail, 実際 %q", resp.AnswerType)
+	}
+}
+
+func TestHandlerEmptyFields(t *testing.T) {
+	// 両フィールドが空でも panic せず success を返すこと
+	resp, err := handler(nil, Event{})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if resp.Status != "success" {
+		t.Errorf("空フィールドでも Status は success であること: %q", resp.Status)
 	}
 }

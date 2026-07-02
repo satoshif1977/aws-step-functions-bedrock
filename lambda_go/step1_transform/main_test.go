@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -8,10 +9,10 @@ import (
 
 func TestTransformUpperCase(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		wantUpper   string
-		wantLength  int
+		name       string
+		input      string
+		wantUpper  string
+		wantLength int
 	}{
 		{"英小文字", "hello", "HELLO", 5},
 		{"英大文字（変化なし）", "WORLD", "WORLD", 5},
@@ -46,6 +47,42 @@ func TestTransformJapanese(t *testing.T) {
 	}
 }
 
+func TestTransformWhitespace(t *testing.T) {
+	got, length := transform("   ")
+	if got != "   " {
+		t.Errorf("空白のみ: 変換後も空白のままであること: %q", got)
+	}
+	if length != 3 {
+		t.Errorf("空白3文字: 期待 3, 実際 %d", length)
+	}
+}
+
+func TestTransformSingleChar(t *testing.T) {
+	got, length := transform("a")
+	if got != "A" {
+		t.Errorf("1文字変換: 期待 A, 実際 %q", got)
+	}
+	if length != 1 {
+		t.Errorf("1文字の文字数: 期待 1, 実際 %d", length)
+	}
+}
+
+func TestTransformLengthMatchesRuneCount(t *testing.T) {
+	// 絵文字（4バイト）でも文字数が 1 になることを確認
+	_, length := transform("A🎉B")
+	if length != 3 {
+		t.Errorf("絵文字を含む文字数: 期待 3, 実際 %d（バイト数ではなくルーン数であること）", length)
+	}
+}
+
+func TestTransformResultIsUppercase(t *testing.T) {
+	input := "step functions bedrock"
+	got, _ := transform(input)
+	if got != strings.ToUpper(input) {
+		t.Errorf("全小文字入力の大文字変換: 期待 %q, 実際 %q", strings.ToUpper(input), got)
+	}
+}
+
 // ── ハンドラー デフォルト値テスト ────────────────────────────
 
 func TestHandlerDefaultMessage(t *testing.T) {
@@ -64,6 +101,30 @@ func TestHandlerDefaultMessage(t *testing.T) {
 	}
 }
 
+func TestHandlerNormalMessage(t *testing.T) {
+	resp, err := handler(nil, Event{Message: "aws bedrock"})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if resp.Original != "aws bedrock" {
+		t.Errorf("Original: 期待 aws bedrock, 実際 %q", resp.Original)
+	}
+	if resp.Transformed != "AWS BEDROCK" {
+		t.Errorf("Transformed: 期待 AWS BEDROCK, 実際 %q", resp.Transformed)
+	}
+}
+
+func TestHandlerLengthField(t *testing.T) {
+	// Length フィールドが utf8 ルーン数であることを確認
+	resp, err := handler(nil, Event{Message: "Go言語"})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if resp.Length != 4 {
+		t.Errorf("Go言語（4文字）の Length: 期待 3, 実際 %d", resp.Length)
+	}
+}
+
 // ── Response 構造体テスト ─────────────────────────────────────
 
 func TestResponseFields(t *testing.T) {
@@ -79,5 +140,17 @@ func TestResponseFields(t *testing.T) {
 	}
 	if resp.Length != 4 {
 		t.Errorf("Length: 期待 4, 実際 %d", resp.Length)
+	}
+}
+
+func TestResponseOriginalPreserved(t *testing.T) {
+	// Original フィールドには変換前の文字列がそのまま入ること
+	input := "Hello World"
+	resp, err := handler(nil, Event{Message: input})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if resp.Original != input {
+		t.Errorf("Original は入力のまま保持されること: 期待 %q, 実際 %q", input, resp.Original)
 	}
 }
