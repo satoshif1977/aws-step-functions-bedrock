@@ -114,3 +114,61 @@ class TestStep1Transform:
         """日本語テキストの文字数が文字単位でカウントされること"""
         result = self._invoke({"message": "こんにちは"})
         assert result["length"] == 5
+
+    # ── Bedrock ペイロード詳細 ────────────────────────────────
+
+    def test_bedrock_max_tokens_is_1000(self):
+        """Bedrock へのリクエストに max_tokens=1000 が含まれること"""
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
+            lambda_handler({"message": "テスト"}, context=None)
+            body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
+            assert body["max_tokens"] == 1000
+
+    def test_bedrock_anthropic_version_in_payload(self):
+        """Bedrock へのリクエストに anthropic_version が含まれること"""
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
+            lambda_handler({"message": "テスト"}, context=None)
+            body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
+            assert "anthropic_version" in body
+
+    def test_bedrock_messages_role_is_user(self):
+        """Bedrock へのリクエストの messages[0].role が 'user' であること"""
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
+            lambda_handler({"message": "テスト"}, context=None)
+            body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
+            assert body["messages"][0]["role"] == "user"
+
+    def test_bedrock_messages_is_single_item_list(self):
+        """Bedrock へのリクエストの messages は1要素のリストであること"""
+        with patch.object(_mod, "bedrock") as mock_bedrock:
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
+            lambda_handler({"message": "テスト"}, context=None)
+            body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
+            assert isinstance(body["messages"], list)
+            assert len(body["messages"]) == 1
+
+    # ── テーブル駆動 ──────────────────────────────────────────
+
+    @pytest.mark.parametrize("length,expected_type", [
+        (0, "short"), (1, "short"), (19, "short"),
+        (20, "short"), (21, "detail"), (100, "detail"),
+    ])
+    def test_answer_type_boundary_table(self, length: int, expected_type: str):
+        """answer_type の境界値テーブル: 文字数別に short/detail が正しいこと"""
+        result = self._invoke({"message": "a" * length})
+        assert result["answer_type"] == expected_type
+
+    def test_empty_string_message(self):
+        """空文字は length=0, answer_type=short になること（20文字以下）"""
+        result = self._invoke({"message": ""})
+        assert result["original"] == ""
+        assert result["length"] == 0
+        assert result["answer_type"] == "short"
+
+    def test_result_is_dict(self):
+        """戻り値が辞書型であること"""
+        result = self._invoke({"message": "test"})
+        assert isinstance(result, dict)
