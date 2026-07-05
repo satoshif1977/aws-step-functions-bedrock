@@ -141,3 +141,77 @@ func TestHandlerEmptyFields(t *testing.T) {
 		t.Errorf("空フィールドでも Status は success であること: %q", resp.Status)
 	}
 }
+
+// ── テーブル駆動テスト ────────────────────────────────────────
+
+func TestFormatResultTableDriven(t *testing.T) {
+	tests := []struct {
+		name       string
+		answerType string
+		answer     string
+		wantFull   string
+	}{
+		{"short型", "short", "簡潔な回答", "[簡潔回答] 簡潔な回答"},
+		{"detail型", "detail", "詳細な回答", "[詳細回答] 詳細な回答"},
+		{"unknown型フォールバック", "unknown", "回答", "[詳細回答] 回答"},
+		{"空型フォールバック", "", "回答", "[詳細回答] 回答"},
+		{"空回答", "short", "", "[簡潔回答] "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatResult(tt.answerType, tt.answer)
+			if got != tt.wantFull {
+				t.Errorf("期待 %q, 実際 %q", tt.wantFull, got)
+			}
+		})
+	}
+}
+
+func TestFormatResultContainsAnswer(t *testing.T) {
+	// 回答テキストが結果に必ず含まれること
+	answers := []string{"テスト回答", "AWS Step Functions", "こんにちは世界"}
+	for _, a := range answers {
+		got := formatResult("short", a)
+		if !strings.Contains(got, a) {
+			t.Errorf("回答 %q が結果に含まれていない: %q", a, got)
+		}
+	}
+}
+
+func TestHandlerTableDriven(t *testing.T) {
+	tests := []struct {
+		name       string
+		answerType string
+		wantPrefix string
+	}{
+		{"short", "short", "[簡潔回答]"},
+		{"detail", "detail", "[詳細回答]"},
+		{"unknown", "unknown", "[詳細回答]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := handler(nil, Event{BedrockAnswer: "テスト", AnswerType: tt.answerType})
+			if err != nil {
+				t.Fatalf("エラーが発生: %v", err)
+			}
+			if !strings.HasPrefix(resp.Result, tt.wantPrefix) {
+				t.Errorf("Result prefix: 期待 %q, 実際 %q", tt.wantPrefix, resp.Result)
+			}
+			if resp.Status != "success" {
+				t.Errorf("Status: 期待 success, 実際 %q", resp.Status)
+			}
+		})
+	}
+}
+
+func TestHandlerResultContainsInput(t *testing.T) {
+	// Result フィールドに入力した BedrockAnswer が含まれること
+	input := "AWS Bedrock の機能説明テキスト"
+	resp, err := handler(nil, Event{BedrockAnswer: input, AnswerType: "short"})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if !strings.Contains(resp.Result, input) {
+		t.Errorf("Result に入力回答が含まれていない: %q", resp.Result)
+	}
+}
