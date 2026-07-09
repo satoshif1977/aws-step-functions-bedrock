@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-07-10
+
+### Added
+- TypeScript ユニットテスト 18 件 → 46 件に拡充（Step1 / Step2 詳細ケース追加）
+- Go ユニットテスト 11 件 → 24 件に拡充（テーブル駆動テスト追加）
+- Python ユニットテスト: step1 13 件 → 25 件に増強
+- Python 検証スクリプト追加（30 件テスト・CI workflow 込み）
+
+### Changed
+- CI: Node.js 20 → 22・`terraform-ci` の `branches` を `main` に統一
+- Dependabot: `actions/checkout` v4 → v7 更新
+
 ## [2.2.0] - 2026-05-28
 
 ### Changed
