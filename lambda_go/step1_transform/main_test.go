@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // ── transform テスト ──────────────────────────────────────────
@@ -152,5 +153,80 @@ func TestResponseOriginalPreserved(t *testing.T) {
 	}
 	if resp.Original != input {
 		t.Errorf("Original は入力のまま保持されること: 期待 %q, 実際 %q", input, resp.Original)
+	}
+}
+
+// ── 追加テスト: エッジケース ──────────────────────────────────
+
+func TestTransformMixedJapaneseEnglish(t *testing.T) {
+	// 日英混合: 英字のみ大文字変換・日本語はそのまま・文字数はルーン数
+	got, length := transform("Hello世界")
+	if got != "HELLO世界" {
+		t.Errorf("日英混合大文字変換: 期待 HELLO世界, 実際 %q", got)
+	}
+	if length != 7 {
+		t.Errorf("日英混合文字数: 期待 7, 実際 %d", length)
+	}
+}
+
+func TestTransformOnlyNumbers(t *testing.T) {
+	// 数字のみ: 変換なし・文字数は桁数と一致
+	got, length := transform("12345")
+	if got != "12345" {
+		t.Errorf("数字のみ: 期待 12345, 実際 %q", got)
+	}
+	if length != 5 {
+		t.Errorf("数字のみ文字数: 期待 5, 実際 %d", length)
+	}
+}
+
+func TestTransformNewlinePreserved(t *testing.T) {
+	// 改行文字が保持され、英字は大文字変換されること
+	got, length := transform("hello\nworld")
+	if got != "HELLO\nWORLD" {
+		t.Errorf("改行含む変換: 期待 HELLO\\nWORLD, 実際 %q", got)
+	}
+	if length != utf8.RuneCountInString("hello\nworld") {
+		t.Errorf("改行含む文字数: 期待 %d, 実際 %d", utf8.RuneCountInString("hello\nworld"), length)
+	}
+}
+
+func TestTransformTab(t *testing.T) {
+	// タブ文字が保持され、英字は大文字変換されること
+	got, length := transform("a\tb")
+	if got != "A\tB" {
+		t.Errorf("タブ含む変換: 期待 A\\tB, 実際 %q", got)
+	}
+	if length != 3 {
+		t.Errorf("タブ含む文字数: 期待 3, 実際 %d", length)
+	}
+}
+
+func TestHandlerLongMessage(t *testing.T) {
+	// 長いメッセージでも panic せず正しく変換されること
+	long := strings.Repeat("abcde", 200) // 1000文字
+	resp, err := handler(nil, Event{Message: long})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if resp.Length != 1000 {
+		t.Errorf("長いメッセージの文字数: 期待 1000, 実際 %d", resp.Length)
+	}
+	if resp.Transformed != strings.ToUpper(long) {
+		t.Error("長いメッセージの大文字変換が一致しない")
+	}
+}
+
+func TestHandlerTransformedMatchesUpperCase(t *testing.T) {
+	// Transformed は常に Original の ToUpper と一致すること
+	inputs := []string{"step functions", "Bedrock Lambda", "GoLang AWS"}
+	for _, input := range inputs {
+		resp, err := handler(nil, Event{Message: input})
+		if err != nil {
+			t.Fatalf("エラーが発生: %v", err)
+		}
+		if resp.Transformed != strings.ToUpper(input) {
+			t.Errorf("入力 %q: Transformed %q が ToUpper と不一致", input, resp.Transformed)
+		}
 	}
 }

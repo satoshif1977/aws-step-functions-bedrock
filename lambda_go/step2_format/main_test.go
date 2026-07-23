@@ -215,3 +215,88 @@ func TestHandlerResultContainsInput(t *testing.T) {
 		t.Errorf("Result に入力回答が含まれていない: %q", resp.Result)
 	}
 }
+
+// ── 追加テスト: エッジケース ──────────────────────────────────
+
+func TestFormatResultUpperCaseTypeFallsToDetail(t *testing.T) {
+	// "SHORT"（大文字）は "short" に一致しないため詳細回答にフォールバックすること
+	got := formatResult("SHORT", "回答テキスト")
+	if !strings.HasPrefix(got, "[詳細回答]") {
+		t.Errorf("大文字 SHORT は [詳細回答] にフォールバックすること: %q", got)
+	}
+}
+
+func TestFormatResultSpecialCharsPreserved(t *testing.T) {
+	// 回答に特殊文字（引用符・パイプ・バックスラッシュ）が含まれても保持されること
+	special := `"quoted" | back\slash`
+	got := formatResult("short", special)
+	if !strings.Contains(got, special) {
+		t.Errorf("特殊文字が保持されていない: %q", got)
+	}
+}
+
+func TestFormatResultNewlineInAnswer(t *testing.T) {
+	// 回答に改行が含まれても結果に保持されること
+	answer := "1行目\n2行目"
+	got := formatResult("detail", answer)
+	if !strings.Contains(got, answer) {
+		t.Errorf("改行を含む回答が保持されていない: %q", got)
+	}
+}
+
+func TestHandlerErrorAlwaysNil(t *testing.T) {
+	// handler は常に nil エラーを返すこと
+	cases := []Event{
+		{BedrockAnswer: "回答", AnswerType: "short"},
+		{BedrockAnswer: "", AnswerType: ""},
+		{BedrockAnswer: strings.Repeat("x", 500), AnswerType: "detail"},
+		{BedrockAnswer: "テスト", AnswerType: "unknown"},
+	}
+	for _, e := range cases {
+		_, err := handler(nil, e)
+		if err != nil {
+			t.Errorf("handler はエラーを返さないこと（AnswerType=%q）: %v", e.AnswerType, err)
+		}
+	}
+}
+
+func TestHandlerLongBedrockAnswer(t *testing.T) {
+	// 長い BedrockAnswer でも Result に全文が含まれること
+	long := strings.Repeat("あ", 500)
+	resp, err := handler(nil, Event{BedrockAnswer: long, AnswerType: "detail"})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if !strings.Contains(resp.Result, long) {
+		t.Error("長い BedrockAnswer が Result に含まれていない")
+	}
+}
+
+func TestFormatResultAnswerWithBrackets(t *testing.T) {
+	// 回答にブラケットが含まれても先頭ラベルが正しいこと
+	answer := "[INFO] 詳細説明"
+	got := formatResult("short", answer)
+	if !strings.HasPrefix(got, "[簡潔回答]") {
+		t.Errorf("回答にブラケットを含む場合のラベル: 期待 [簡潔回答], 実際 %q", got)
+	}
+	if !strings.Contains(got, answer) {
+		t.Errorf("回答本文が保持されていない: %q", got)
+	}
+}
+
+func TestHandlerAllFieldsPopulated(t *testing.T) {
+	// レスポンスの全フィールド（Result / AnswerType / Status）が空でないこと
+	resp, err := handler(nil, Event{BedrockAnswer: "テスト回答", AnswerType: "short"})
+	if err != nil {
+		t.Fatalf("エラーが発生: %v", err)
+	}
+	if resp.Result == "" {
+		t.Error("Result が空")
+	}
+	if resp.AnswerType == "" {
+		t.Error("AnswerType が空")
+	}
+	if resp.Status == "" {
+		t.Error("Status が空")
+	}
+}
