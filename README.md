@@ -12,6 +12,8 @@
 ![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
 ![Claude Code](https://img.shields.io/badge/Built%20with-Claude%20Code-orange?logo=anthropic)
+![Claude Cowork](https://img.shields.io/badge/Daily%20Use-Claude%20Cowork-blueviolet?logo=anthropic)
+![Claude Skills](https://img.shields.io/badge/Custom-Skills%20Configured-green?logo=anthropic)
 
 AWS Step Functions と Amazon Bedrock を組み合わせた AI ワークフロー自動化の実装例です。
 Lambda チェーン・Bedrock 直接呼び出し・条件分岐（Choice ステート）・EventBridge Pipes を Terraform で IaC 化しています。
