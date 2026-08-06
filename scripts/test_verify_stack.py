@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from verify_stack import (
+    ResultItem,
     VerifyResult,
     verify_lambda_function,
     verify_log_group,
@@ -92,6 +93,25 @@ def has_ok(result: VerifyResult) -> bool:
     return result.ok_count > 0
 
 
+# ── ResultItem テスト ─────────────────────────────────────────
+class TestResultItem:
+    def test_ok_status(self) -> None:
+        item = ResultItem("OK", "成功メッセージ")
+        assert item.status == "OK"
+
+    def test_ng_status(self) -> None:
+        item = ResultItem("NG", "失敗メッセージ")
+        assert item.status == "NG"
+
+    def test_message_stored(self) -> None:
+        item = ResultItem("OK", "テストメッセージ")
+        assert item.message == "テストメッセージ"
+
+    def test_skip_status(self) -> None:
+        item = ResultItem("SKIP", "スキップ理由")
+        assert item.status == "SKIP"
+
+
 # ── VerifyResult テスト ───────────────────────────────────────
 class TestVerifyResult:
     def test_ok_count(self) -> None:
@@ -112,6 +132,31 @@ class TestVerifyResult:
         r = VerifyResult(section="テスト")
         r.skip("スキップ"); r.skip("スキップ2")
         assert r.ok_count == 0 and r.ng_count == 0
+
+    def test_mixed_counts(self) -> None:
+        r = VerifyResult(section="テスト")
+        r.ok("ok1"); r.ok("ok2"); r.ok("ok3")
+        r.ng("ng1"); r.ng("ng2")
+        r.skip("skip1")
+        assert r.ok_count == 3 and r.ng_count == 2
+
+    def test_section_stored(self) -> None:
+        r = VerifyResult(section="セクション名")
+        assert r.section == "セクション名"
+
+    def test_items_list_grows(self) -> None:
+        r = VerifyResult(section="テスト")
+        assert len(r.items) == 0
+        r.ok("追加1")
+        r.ng("追加2")
+        assert len(r.items) == 2
+
+    def test_print_does_not_raise(self, capsys: pytest.CaptureFixture[str]) -> None:
+        r = VerifyResult(section="出力テスト")
+        r.ok("OK項目"); r.ng("NG項目"); r.skip("SKIP項目")
+        r.print()  # 例外が出ないことを確認
+        captured = capsys.readouterr()
+        assert "出力テスト" in captured.out
 
 
 # ── verify_lambda_function テスト ─────────────────────────────
@@ -162,6 +207,36 @@ class TestVerifyLambdaFunction:
         result = verify_lambda_function("sfn-step2-format", make_lambda_client())
         assert "sfn-step2-format" in result.section
 
+    def test_pending_state(self) -> None:
+        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(state="Pending"))
+        assert has_ng(result)
+
+    def test_failed_state(self) -> None:
+        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(state="Failed"))
+        assert has_ng(result)
+
+    def test_tracing_xray_mode(self) -> None:
+        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(tracing="XRay"))
+        assert has_ng(result)
+
+    def test_missing_tracing_config(self) -> None:
+        client = MagicMock()
+        client.exceptions.ResourceNotFoundException = type("RNF", (Exception,), {})
+        client.get_function.return_value = {
+            "Configuration": {
+                "Runtime": "python3.12",
+                "State": "Active",
+                # TracingConfig なし
+            }
+        }
+        result = verify_lambda_function("sfn-step1-transform", client)
+        assert has_ng(result)
+
+    def test_step2_function_name_in_section(self) -> None:
+        result = verify_lambda_function("sfn-step2-format", make_lambda_client())
+        assert "sfn-step2-format" in result.section
+        assert not has_ng(result)
+
 
 # ── verify_log_group テスト ───────────────────────────────────
 class TestVerifyLogGroup:
@@ -203,6 +278,27 @@ class TestVerifyLogGroup:
         lg = "/aws/states/sfn-bedrock-dev-sfn"
         result = verify_log_group(lg, make_logs_client(lg, 30))
         assert not has_ng(result)
+
+    def test_multiple_groups_correct_one_present(self) -> None:
+        client = MagicMock()
+        client.describe_log_groups.return_value = {
+            "logGroups": [
+                {"logGroupName": "/other/group", "retentionInDays": 30},
+                {"logGroupName": self.LG, "retentionInDays": 30},
+            ]
+        }
+        result = verify_log_group(self.LG, client)
+        assert not has_ng(result)
+
+    def test_empty_log_groups(self) -> None:
+        client = MagicMock()
+        client.describe_log_groups.return_value = {"logGroups": []}
+        result = verify_log_group(self.LG, client)
+        assert has_ng(result)
+
+    def test_ok_count_all_pass(self) -> None:
+        result = verify_log_group(self.LG, make_logs_client(self.LG, 30))
+        assert result.ok_count >= 2  # 存在・保持期間
 
 
 # ── verify_state_machine テスト ───────────────────────────────
@@ -266,3 +362,24 @@ class TestVerifyStateMachine:
         machines = [_default_machine(self.SM_NAME)]
         result = verify_state_machine(self.SM_NAME, make_sfn_client(machines))
         assert self.SM_NAME in result.section
+
+    def test_creating_status(self) -> None:
+        machines = [_default_machine(self.SM_NAME)]
+        result = verify_state_machine(
+            self.SM_NAME,
+            make_sfn_client(machines, detail={"status": "CREATING", "type": "STANDARD"}),
+        )
+        assert has_ng(result)
+
+    def test_arn_passed_to_describe(self) -> None:
+        machines = [_default_machine(self.SM_NAME)]
+        client = make_sfn_client(machines)
+        verify_state_machine(self.SM_NAME, client)
+        expected_arn = machines[0]["stateMachineArn"]
+        client.describe_state_machine.assert_called_once_with(stateMachineArn=expected_arn)
+
+    def test_prefix_name_does_not_match(self) -> None:
+        # "sfn-bedrock-dev-sfn" が "sfn-bedrock-dev-sfn-express" にマッチしないことを確認
+        machines = [_default_machine("sfn-bedrock-dev-sfn-express")]
+        result = verify_state_machine(self.SM_NAME, make_sfn_client(machines))
+        assert has_ng(result)
