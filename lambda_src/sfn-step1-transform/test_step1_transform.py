@@ -28,7 +28,9 @@ class TestStep1Transform:
 
     def _invoke(self, event: dict, bedrock_response: str = "Bedrockの回答") -> dict:
         with patch.object(_mod, "bedrock") as mock_bedrock:
-            mock_bedrock.invoke_model.return_value = _make_bedrock_response(bedrock_response)
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response(
+                bedrock_response
+            )
             return lambda_handler(event, context=None)
 
     # ── 正常系 ─────────────────────────────────────────
@@ -61,7 +63,12 @@ class TestStep1Transform:
     def test_all_fields_present(self):
         """出力に必要なキーがすべて含まれること"""
         result = self._invoke({"message": "test"})
-        assert set(result.keys()) == {"original", "bedrock_answer", "answer_type", "length"}
+        assert set(result.keys()) == {
+            "original",
+            "bedrock_answer",
+            "answer_type",
+            "length",
+        }
 
     # ── Bedrock 呼び出し検証 ──────────────────────────────
 
@@ -152,10 +159,17 @@ class TestStep1Transform:
 
     # ── テーブル駆動 ──────────────────────────────────────────
 
-    @pytest.mark.parametrize("length,expected_type", [
-        (0, "short"), (1, "short"), (19, "short"),
-        (20, "short"), (21, "detail"), (100, "detail"),
-    ])
+    @pytest.mark.parametrize(
+        "length,expected_type",
+        [
+            (0, "short"),
+            (1, "short"),
+            (19, "short"),
+            (20, "short"),
+            (21, "detail"),
+            (100, "detail"),
+        ],
+    )
     def test_answer_type_boundary_table(self, length: int, expected_type: str):
         """answer_type の境界値テーブル: 文字数別に short/detail が正しいこと"""
         result = self._invoke({"message": "a" * length})

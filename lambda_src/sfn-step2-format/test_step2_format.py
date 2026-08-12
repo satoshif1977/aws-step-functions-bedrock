@@ -3,8 +3,6 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # 同名モジュールの衝突を避けるため importlib で直接パス指定してロード
 _spec = importlib.util.spec_from_file_location(
     "lambda_function_step2",
@@ -28,7 +26,9 @@ class TestStep2Format:
 
     def _invoke(self, event: dict, bedrock_response: str = "整形済み回答") -> dict:
         with patch.object(_mod, "bedrock") as mock_bedrock:
-            mock_bedrock.invoke_model.return_value = _make_bedrock_response(bedrock_response)
+            mock_bedrock.invoke_model.return_value = _make_bedrock_response(
+                bedrock_response
+            )
             return lambda_handler(event, context=None)
 
     # ── 正常系 ─────────────────────────────────────────
@@ -40,18 +40,26 @@ class TestStep2Format:
 
     def test_detail_answer_label(self):
         """answer_type=detail のとき result が [詳細回答] で始まること"""
-        result = self._invoke({"bedrock_answer": "詳しく説明します。", "answer_type": "detail"})
+        result = self._invoke(
+            {"bedrock_answer": "詳しく説明します。", "answer_type": "detail"}
+        )
         assert result["result"].startswith("[詳細回答]")
 
     def test_result_contains_refined_answer(self):
         """result に Bedrock が返した整形済み回答が含まれること"""
         refined = "まとめた回答テキスト"
-        result = self._invoke({"bedrock_answer": "元の回答", "answer_type": "short"}, bedrock_response=refined)
+        result = self._invoke(
+            {"bedrock_answer": "元の回答", "answer_type": "short"},
+            bedrock_response=refined,
+        )
         assert refined in result["result"]
 
     def test_result_format(self):
         """result が '[ラベル] 整形済み回答' の形式であること"""
-        result = self._invoke({"bedrock_answer": "晴れです。", "answer_type": "short"}, bedrock_response="晴れです。")
+        result = self._invoke(
+            {"bedrock_answer": "晴れです。", "answer_type": "short"},
+            bedrock_response="晴れです。",
+        )
         assert result["result"] == "[簡潔回答] 晴れです。"
 
     def test_status_is_always_success(self):
@@ -75,7 +83,9 @@ class TestStep2Format:
         """answer_type=short のとき 簡潔 を含むプロンプトで Bedrock が呼ばれること"""
         with patch.object(_mod, "bedrock") as mock_bedrock:
             mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
-            lambda_handler({"bedrock_answer": "元の回答", "answer_type": "short"}, context=None)
+            lambda_handler(
+                {"bedrock_answer": "元の回答", "answer_type": "short"}, context=None
+            )
             body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
             assert "簡潔" in body["messages"][0]["content"]
 
@@ -83,7 +93,9 @@ class TestStep2Format:
         """answer_type=detail のとき 箇条書き を含むプロンプトで Bedrock が呼ばれること"""
         with patch.object(_mod, "bedrock") as mock_bedrock:
             mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
-            lambda_handler({"bedrock_answer": "元の回答", "answer_type": "detail"}, context=None)
+            lambda_handler(
+                {"bedrock_answer": "元の回答", "answer_type": "detail"}, context=None
+            )
             body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
             assert "箇条書き" in body["messages"][0]["content"]
 
@@ -92,7 +104,9 @@ class TestStep2Format:
         original = "Step1からの回答テキスト"
         with patch.object(_mod, "bedrock") as mock_bedrock:
             mock_bedrock.invoke_model.return_value = _make_bedrock_response("ok")
-            lambda_handler({"bedrock_answer": original, "answer_type": "short"}, context=None)
+            lambda_handler(
+                {"bedrock_answer": original, "answer_type": "short"}, context=None
+            )
             body = json.loads(mock_bedrock.invoke_model.call_args.kwargs["body"])
             assert original in body["messages"][0]["content"]
 
@@ -114,7 +128,9 @@ class TestStep2Format:
     def test_empty_bedrock_answer_skips_bedrock(self):
         """bedrock_answer が空のときは Bedrock を呼ばず status=success を返すこと"""
         with patch.object(_mod, "bedrock") as mock_bedrock:
-            result = lambda_handler({"bedrock_answer": "", "answer_type": "short"}, context=None)
+            result = lambda_handler(
+                {"bedrock_answer": "", "answer_type": "short"}, context=None
+            )
             mock_bedrock.invoke_model.assert_not_called()
         assert result["status"] == "success"
         assert result["result"] == "[簡潔回答] "

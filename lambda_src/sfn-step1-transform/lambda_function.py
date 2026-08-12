@@ -19,12 +19,14 @@ _SYSTEM_PROMPT = (
 
 # ── Bedrock 呼び出し ──────────────────────────────────────
 def _ask_bedrock(message: str) -> str:
-    body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 1000,
-        "system": _SYSTEM_PROMPT,
-        "messages": [{"role": "user", "content": message}],
-    })
+    body = json.dumps(
+        {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1000,
+            "system": _SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": message}],
+        }
+    )
     response = bedrock.invoke_model(modelId=MODEL_ID, body=body)
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]

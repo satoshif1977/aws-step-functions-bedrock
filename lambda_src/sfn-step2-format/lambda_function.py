@@ -27,11 +27,13 @@ _PROMPTS = {
 def _reformat(bedrock_answer: str, answer_type: str) -> str:
     template = _PROMPTS.get(answer_type, _PROMPTS["detail"])
     prompt = template.format(answer=bedrock_answer)
-    body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 500,
-        "messages": [{"role": "user", "content": prompt}],
-    })
+    body = json.dumps(
+        {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 500,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+    )
     response = bedrock.invoke_model(modelId=MODEL_ID, body=body)
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
