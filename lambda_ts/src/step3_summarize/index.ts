@@ -9,6 +9,8 @@
  *   TS    : [...str].length で サロゲートペア（絵文字）も1文字としてカウント
  */
 
+import { Metadata } from '../shared/types';
+
 // ── 定数 ─────────────────────────────────────────────────────
 const TRUNCATE_LIMIT = 500;
 
@@ -19,12 +21,7 @@ export interface Step3Event {
   status?: string;
 }
 
-export interface Metadata {
-  char_count: number;
-  word_count: number;
-  processed_at: string;
-  is_truncated: boolean;
-}
+export type { Metadata };
 
 export interface Step3Response {
   summary: string;
