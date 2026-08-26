@@ -16,13 +16,10 @@ const SUBJECT_SUCCESS = "Bedrock Summary Ready";
 const SUBJECT_TRUNCATED = "Bedrock Summary Ready (Truncated)";
 const SUBJECT_ERROR = "Bedrock Pipeline Error";
 
+import { Metadata } from '../shared/types';
+
 // ── 入出力型定義 ──────────────────────────────────────────────
-export interface Metadata {
-  char_count: number;
-  word_count: number;
-  processed_at: string;
-  is_truncated: boolean;
-}
+export type { Metadata };
 
 export interface Step4Event {
   summary?: string;
