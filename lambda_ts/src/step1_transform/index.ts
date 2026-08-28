@@ -9,6 +9,8 @@
  *   TS    : 静的型付け + 型推論・Node.js エコシステム活用
  */
 
+import { DEFAULT_MESSAGE, transform, classifyByLength } from './helpers';
+
 // ── 入出力型定義 ──────────────────────────────────────────────
 export interface Step1Event {
   message?: string;
@@ -21,29 +23,8 @@ export interface Step1Response {
   answer_type: "short" | "detail";
 }
 
-// ── 定数 ─────────────────────────────────────────────────────
-const SHORT_THRESHOLD = 20;
-const DEFAULT_MESSAGE = "Hello";
-
-// ── ヘルパー関数 ──────────────────────────────────────────────
-
-/**
- * テキストを大文字変換してUnicode文字数を返す。
- * [...str] で サロゲートペア（絵文字等）も1文字としてカウントする。
- */
-export function transform(text: string): { transformed: string; length: number } {
-  return {
-    transformed: text.toUpperCase(),
-    length: [...text].length, // Unicode 対応（Goの utf8.RuneCountInString 相当）
-  };
-}
-
-/**
- * テキスト長から回答タイプを判定する。
- */
-export function classifyByLength(length: number): "short" | "detail" {
-  return length <= SHORT_THRESHOLD ? "short" : "detail";
-}
+// ── re-export ────────────────────────────────────────────────
+export { transform, classifyByLength } from './helpers';
 
 // ── Lambda ハンドラー ─────────────────────────────────────────
 export const handler = async (event: Step1Event): Promise<Step1Response> => {

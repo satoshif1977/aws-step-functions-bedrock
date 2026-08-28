@@ -6,6 +6,8 @@
  * 注: TypeScript版はテキスト処理に専念（Bedrock 呼び出しは Step Functions が直接実施）
  */
 
+import { resolveLabel, formatResult } from './helpers';
+
 // ── 入出力型定義 ──────────────────────────────────────────────
 export interface Step2Event {
   bedrock_answer?: string;
@@ -18,29 +20,8 @@ export interface Step2Response {
   status: "success" | "empty";
 }
 
-// ── ラベルマッピング ──────────────────────────────────────────
-const LABEL_MAP: Record<string, string> = {
-  short: "簡潔回答",
-  detail: "詳細回答",
-};
-
-// ── ヘルパー関数 ──────────────────────────────────────────────
-
-/**
- * answer_type から表示ラベルを取得する。
- * 未知の type は "不明" として扱う。
- */
-export function resolveLabel(answerType: string): string {
-  return LABEL_MAP[answerType] ?? "不明";
-}
-
-/**
- * Bedrock 回答をラベル付きフォーマットに整形する。
- */
-export function formatResult(answer: string, answerType: string): string {
-  const label = resolveLabel(answerType);
-  return `[${label}] ${answer}`;
-}
+// ── re-export ────────────────────────────────────────────────
+export { resolveLabel, formatResult } from './helpers';
 
 // ── Lambda ハンドラー ─────────────────────────────────────────
 export const handler = async (event: Step2Event): Promise<Step2Response> => {
