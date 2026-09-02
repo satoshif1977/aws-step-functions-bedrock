@@ -5,15 +5,18 @@ on:
     branches: [main]
     paths:
       - "scripts/**"
+      - "lambda_src/**"
       - ".github/workflows/python-test.yml"
   pull_request:
     branches: [main]
     paths:
       - "scripts/**"
+      - "lambda_src/**"
       - ".github/workflows/python-test.yml"
 
 jobs:
-  test:
+  scripts-test:
+    name: scripts のユニットテスト
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -39,4 +42,32 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: python
+          fail_ci_if_error: false
+
+  lambda-test:
+    name: lambda_src のユニットテスト
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      AWS_DEFAULT_REGION: ap-northeast-1
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r lambda_src/requirements-dev.txt pytest-cov
+
+      - name: Run pytest
+        run: pytest lambda_src -v --cov=lambda_src --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: python-lambda
           fail_ci_if_error: false
