@@ -10,7 +10,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from verify_stack import (
     ResultItem,
     VerifyResult,
@@ -116,12 +115,16 @@ class TestResultItem:
 class TestVerifyResult:
     def test_ok_count(self) -> None:
         r = VerifyResult(section="テスト")
-        r.ok("成功1"); r.ok("成功2"); r.ng("失敗1")
+        r.ok("成功1")
+        r.ok("成功2")
+        r.ng("失敗1")
         assert r.ok_count == 2
 
     def test_ng_count(self) -> None:
         r = VerifyResult(section="テスト")
-        r.ok("成功1"); r.ng("失敗1"); r.ng("失敗2")
+        r.ok("成功1")
+        r.ng("失敗1")
+        r.ng("失敗2")
         assert r.ng_count == 2
 
     def test_empty_counts(self) -> None:
@@ -130,13 +133,17 @@ class TestVerifyResult:
 
     def test_skip_not_counted(self) -> None:
         r = VerifyResult(section="テスト")
-        r.skip("スキップ"); r.skip("スキップ2")
+        r.skip("スキップ")
+        r.skip("スキップ2")
         assert r.ok_count == 0 and r.ng_count == 0
 
     def test_mixed_counts(self) -> None:
         r = VerifyResult(section="テスト")
-        r.ok("ok1"); r.ok("ok2"); r.ok("ok3")
-        r.ng("ng1"); r.ng("ng2")
+        r.ok("ok1")
+        r.ok("ok2")
+        r.ok("ok3")
+        r.ng("ng1")
+        r.ng("ng2")
         r.skip("skip1")
         assert r.ok_count == 3 and r.ng_count == 2
 
@@ -153,7 +160,9 @@ class TestVerifyResult:
 
     def test_print_does_not_raise(self, capsys: pytest.CaptureFixture[str]) -> None:
         r = VerifyResult(section="出力テスト")
-        r.ok("OK項目"); r.ng("NG項目"); r.skip("SKIP項目")
+        r.ok("OK項目")
+        r.ng("NG項目")
+        r.skip("SKIP項目")
         r.print()  # 例外が出ないことを確認
         captured = capsys.readouterr()
         assert "出力テスト" in captured.out
@@ -172,23 +181,33 @@ class TestVerifyLambdaFunction:
         assert has_ng(result)
 
     def test_api_error(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(error=Exception("エラー")))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(error=Exception("エラー"))
+        )
         assert has_ng(result)
 
     def test_wrong_runtime(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(runtime="nodejs22.x"))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(runtime="nodejs22.x")
+        )
         assert has_ng(result)
 
     def test_wrong_runtime_py311(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(runtime="python3.11"))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(runtime="python3.11")
+        )
         assert has_ng(result)
 
     def test_inactive_state(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(state="Inactive"))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(state="Inactive")
+        )
         assert has_ng(result)
 
     def test_active_tracing_not_passthrough(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(tracing="Active"))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(tracing="Active")
+        )
         assert has_ng(result)
 
     def test_ok_count_all_pass(self) -> None:
@@ -208,15 +227,21 @@ class TestVerifyLambdaFunction:
         assert "sfn-step2-format" in result.section
 
     def test_pending_state(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(state="Pending"))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(state="Pending")
+        )
         assert has_ng(result)
 
     def test_failed_state(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(state="Failed"))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(state="Failed")
+        )
         assert has_ng(result)
 
     def test_tracing_xray_mode(self) -> None:
-        result = verify_lambda_function("sfn-step1-transform", make_lambda_client(tracing="XRay"))
+        result = verify_lambda_function(
+            "sfn-step1-transform", make_lambda_client(tracing="XRay")
+        )
         assert has_ng(result)
 
     def test_missing_tracing_config(self) -> None:
@@ -261,7 +286,8 @@ class TestVerifyLogGroup:
 
     def test_custom_retention(self) -> None:
         result = verify_log_group(
-            self.LG, make_logs_client(self.LG, retention=90),
+            self.LG,
+            make_logs_client(self.LG, retention=90),
             expected_retention_days=90,
         )
         assert not has_ng(result)
@@ -332,7 +358,9 @@ class TestVerifyStateMachine:
         machines = [_default_machine(self.SM_NAME)]
         result = verify_state_machine(
             self.SM_NAME,
-            make_sfn_client(machines, detail={"status": "DELETING", "type": "STANDARD"}),
+            make_sfn_client(
+                machines, detail={"status": "DELETING", "type": "STANDARD"}
+            ),
         )
         assert has_ng(result)
 
@@ -367,7 +395,9 @@ class TestVerifyStateMachine:
         machines = [_default_machine(self.SM_NAME)]
         result = verify_state_machine(
             self.SM_NAME,
-            make_sfn_client(machines, detail={"status": "CREATING", "type": "STANDARD"}),
+            make_sfn_client(
+                machines, detail={"status": "CREATING", "type": "STANDARD"}
+            ),
         )
         assert has_ng(result)
 
@@ -376,7 +406,9 @@ class TestVerifyStateMachine:
         client = make_sfn_client(machines)
         verify_state_machine(self.SM_NAME, client)
         expected_arn = machines[0]["stateMachineArn"]
-        client.describe_state_machine.assert_called_once_with(stateMachineArn=expected_arn)
+        client.describe_state_machine.assert_called_once_with(
+            stateMachineArn=expected_arn
+        )
 
     def test_prefix_name_does_not_match(self) -> None:
         # "sfn-bedrock-dev-sfn" が "sfn-bedrock-dev-sfn-express" にマッチしないことを確認

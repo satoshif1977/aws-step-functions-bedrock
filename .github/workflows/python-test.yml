@@ -15,6 +15,29 @@ on:
       - ".github/workflows/python-test.yml"
 
 jobs:
+  lint:
+    name: ruff / black
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install linters
+        run: pip install ruff black
+
+      - name: ruff（構文チェック）
+        run: ruff check lambda_src scripts
+
+      - name: black（フォーマットチェック）
+        run: black --check lambda_src scripts
+
   scripts-test:
     name: scripts のユニットテスト
     runs-on: ubuntu-latest

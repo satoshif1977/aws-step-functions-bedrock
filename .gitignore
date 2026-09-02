@@ -25,3 +25,10 @@ Thumbs.db
 .ruff_cache/
 .pytest_cache/
 __pycache__/
+
+# テスト・カバレッジの生成物
+.coverage
+coverage.out
+coverage*.out
+coverage.xml
+htmlcov/

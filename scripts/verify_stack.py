@@ -26,17 +26,17 @@ from typing import Any
 import boto3
 
 # ── デフォルト設定 ────────────────────────────────────────────
-DEFAULT_PROJECT   = "sfn-bedrock"
-DEFAULT_ENV       = "dev"
-DEFAULT_REGION    = "ap-northeast-1"
-EXPECTED_RUNTIME  = "python3.12"
+DEFAULT_PROJECT = "sfn-bedrock"
+DEFAULT_ENV = "dev"
+DEFAULT_REGION = "ap-northeast-1"
+EXPECTED_RUNTIME = "python3.12"
 EXPECTED_LOG_RETENTION_DAYS = 30  # modules/lambda/variables.tf: default = 30
 
 
 # ── 結果型 ────────────────────────────────────────────────────
 @dataclass
 class ResultItem:
-    status: str   # "OK" | "NG" | "SKIP"
+    status: str  # "OK" | "NG" | "SKIP"
     message: str
 
 
@@ -130,7 +130,9 @@ def verify_log_group(
         result.ng(f"DescribeLogGroups エラー: {e}")
         return result
 
-    groups = [g for g in resp.get("logGroups", []) if g["logGroupName"] == log_group_name]
+    groups = [
+        g for g in resp.get("logGroups", []) if g["logGroupName"] == log_group_name
+    ]
     if not groups:
         result.ng(f"ロググループ '{log_group_name}' が見つかりません")
         return result
@@ -141,7 +143,9 @@ def verify_log_group(
     if retention == expected_retention_days:
         result.ok(f"保持期間正常: {retention}日")
     else:
-        result.ng(f"保持期間が想定外: {retention}日 (期待: {expected_retention_days}日)")
+        result.ng(
+            f"保持期間が想定外: {retention}日 (期待: {expected_retention_days}日)"
+        )
 
     return result
 
@@ -160,7 +164,9 @@ def verify_state_machine(
         result.ng(f"ListStateMachines エラー: {e}")
         return result
 
-    machines = [m for m in resp.get("stateMachines", []) if m.get("name") == state_machine_name]
+    machines = [
+        m for m in resp.get("stateMachines", []) if m.get("name") == state_machine_name
+    ]
     if not machines:
         result.ng(f"ステートマシン '{state_machine_name}' が見つかりません")
         return result
@@ -170,7 +176,9 @@ def verify_state_machine(
 
     # ステートマシンの詳細を取得して状態確認
     try:
-        detail = client.describe_state_machine(stateMachineArn=machine["stateMachineArn"])
+        detail = client.describe_state_machine(
+            stateMachineArn=machine["stateMachineArn"]
+        )
         status = detail.get("status", "")
         if status == "ACTIVE":
             result.ok(f"ステータス正常: {status}")
@@ -187,30 +195,34 @@ def verify_state_machine(
 
 # ── メイン ────────────────────────────────────────────────────
 def main() -> None:
-    parser = argparse.ArgumentParser(description="aws-step-functions-bedrock スタック検証")
-    parser.add_argument("--project",  default=DEFAULT_PROJECT)
-    parser.add_argument("--env",      default=DEFAULT_ENV)
-    parser.add_argument("--region",   default=DEFAULT_REGION)
-    parser.add_argument("--profile",  default=None)
+    parser = argparse.ArgumentParser(
+        description="aws-step-functions-bedrock スタック検証"
+    )
+    parser.add_argument("--project", default=DEFAULT_PROJECT)
+    parser.add_argument("--env", default=DEFAULT_ENV)
+    parser.add_argument("--region", default=DEFAULT_REGION)
+    parser.add_argument("--profile", default=None)
     args = parser.parse_args()
 
     project = args.project
-    env     = args.env
+    env = args.env
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
 
-    print(f"\naws-step-functions-bedrock スタック検証")
+    print("\naws-step-functions-bedrock スタック検証")
     print(f"プロジェクト : {project}")
     print(f"環境         : {env}")
     print(f"リージョン   : {args.region}")
 
     results = [
         verify_lambda_function("sfn-step1-transform", session.client("lambda")),
-        verify_lambda_function("sfn-step2-format",    session.client("lambda")),
-        verify_log_group(f"/aws/lambda/sfn-step1-transform", session.client("logs")),
-        verify_log_group(f"/aws/lambda/sfn-step2-format",    session.client("logs")),
+        verify_lambda_function("sfn-step2-format", session.client("lambda")),
+        verify_log_group("/aws/lambda/sfn-step1-transform", session.client("logs")),
+        verify_log_group("/aws/lambda/sfn-step2-format", session.client("logs")),
         verify_log_group(f"/aws/states/{project}-{env}-sfn", session.client("logs")),
-        verify_state_machine(f"{project}-{env}-sfn",         session.client("stepfunctions")),
-        verify_state_machine(f"{project}-{env}-sfn-express", session.client("stepfunctions")),
+        verify_state_machine(f"{project}-{env}-sfn", session.client("stepfunctions")),
+        verify_state_machine(
+            f"{project}-{env}-sfn-express", session.client("stepfunctions")
+        ),
     ]
 
     total_ng = 0
