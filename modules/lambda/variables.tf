@@ -24,6 +24,12 @@ variable "log_retention_days" {
   default     = 30
 }
 
+variable "shared_modules" {
+  description = "lambda_src 直下から各関数のデプロイパッケージへ同梱する共有モジュール（ファイル名）"
+  type        = list(string)
+  default     = ["retry.py"]
+}
+
 variable "env_vars" {
   description = "Lambda 環境変数（省略可）"
   type        = map(string)
