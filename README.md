@@ -133,8 +133,13 @@ aws-step-functions-bedrock/
 │   ├── step_functions/       # Step Functions モジュール（Standard + Express）
 │   └── pipes/                # EventBridge Pipes モジュール（SQS → Step Functions）
 ├── lambda_src/               # Python 実装（デフォルト）
+│   ├── retry.py              # 指数バックオフ + フルジッターのリトライ
+│   ├── logger.py             # 機密情報マスキング付き構造化ロガー
+│   ├── metrics.py            # EMF による CloudWatch メトリクス発行
+│   ├── conftest.py           # テスト時に lambda_src を import パスへ追加
 │   ├── sfn-step1-transform/  # テキスト加工 Lambda
 │   └── sfn-step2-format/     # 最終整形 Lambda
+│                             #（共有モジュール・各 Lambda ともテストを同置）
 ├── lambda_go/                # Go 並置実装
 │   ├── step1_transform/      # main.go + main_test.go
 │   └── step2_format/         # main.go + main_test.go
@@ -146,10 +151,62 @@ aws-step-functions-bedrock/
 │   └── template.yaml         # CloudFormation 版（Terraform との比較用）
 ├── scripts/
 │   ├── verify_stack.py       # Python 版スタック検証（Lambda・Logs・Step Functions）
-│   ├── test_verify_stack.py  # pytest テスト（30件・MagicMock）
+│   ├── test_verify_stack.py  # pytest テスト（49件・MagicMock）
 │   └── requirements-dev.txt  # pytest + boto3
 └── README.md
 ```
+
+---
+
+## 共有ユーティリティ（retry / logger / metrics）
+
+`lambda_src` 直下に、各 Lambda から共有する運用品質向けのモジュールを置いている。
+いずれも AWS SDK に依存せず、**時刻・出力先・待機を注入できる**設計にしてあるため、
+テストは実時間ゼロで決定的に書ける。
+
+| モジュール | 役割 | 要点 |
+|---|---|---|
+| `retry.py` | AWS API 呼び出しの再試行 | 指数バックオフを上限でクランプし、**フルジッター**で散らす（thundering herd 防止）。元の例外はラップせず再送出するので、呼び出し側の `except ClientError` を壊さない |
+| `logger.py` | 構造化ログ | 1 行 JSON で出力し、Logs Insights から検索・集計できる。パスワードやトークンは**キー名の部分一致**でマスキングする |
+| `metrics.py` | メトリクス発行 | **EMF（Embedded Metric Format）** で 1 行 JSON を書き出し、CloudWatch Logs 側にメトリクスを抽出させる。`PutMetricData` を呼ばないので追加の API 呼び出しも IAM 権限も不要 |
+
+3 つは互いに結線できる。リトライが起きたときにログとメトリクスの両方へ流す場合はこう書く。
+
+```python
+from logger import create_logger_from_env, retry_logger
+from metrics import create_metrics_from_env, retry_metrics
+from retry import retry_call
+
+log = create_logger_from_env()
+metrics = create_metrics_from_env()
+metrics.set_dimensions(Service="transform", Environment="dev")
+
+def on_retry(attempt, delay, exc):
+    retry_logger(log, "Bedrock.InvokeModel")(attempt, delay, exc)
+    retry_metrics(metrics, "Bedrock.InvokeModel")(attempt, delay, exc)
+
+with metrics.timer("ProcessingLatency"):
+    result = retry_call(bedrock.invoke_model, on_retry=on_retry, **kwargs)
+
+metrics.add_metric("ProcessedItems", 1, unit="Count")
+metrics.flush()
+```
+
+### 使ううえでの注意
+
+- **ディメンションを高カーディナリティにしない。** `request_id` のような値を
+  `set_dimensions()` に渡すと、値の種類の数だけ課金対象のカスタムメトリクスが作られる。
+  ログにだけ残したい値は `set_property()` を使う
+- **`flush()` を忘れない。** メトリクスは `flush()` まで出力されない。
+  `with metrics:` で囲めば、例外で抜けるときも自動で flush される
+- ログの出力キーは `timestamp` / `level` / `message` に固定してあり、
+  この 3 つは context から上書きできない。同じユーティリティを移植した
+  他リポジトリの Go 版・TypeScript 版とも同じキー構成なので、
+  Logs Insights のクエリをリポジトリ・言語をまたいで使い回せる
+  （本リポジトリの Go / TypeScript 実装への移植はまだ行っていない）
+
+デプロイパッケージへの同梱は `modules/lambda` の `shared_modules` 変数で制御する
+（既定は `["retry.py"]`）。ハンドラから import するモジュールをここに追加すること。
 
 ---
 
@@ -366,11 +423,19 @@ cat response.json
 ### Python コードのローカル確認
 
 ```bash
+# 共有ユーティリティ + 各 Lambda
+pip install -r lambda_src/requirements-dev.txt
+pytest lambda_src -v
+# 394件 PASS（retry / logger / metrics と step1 / step2 の Lambda）
+
+# デプロイ後の検証スクリプト
 pip install pytest boto3
-cd scripts
-pytest test_verify_stack.py -v
-# 30件 PASS（Lambda・CloudWatch Logs・Step Functions 検証関数を MagicMock でテスト）
+pytest scripts -v
+# 49件 PASS（Lambda・CloudWatch Logs・Step Functions 検証関数を MagicMock でテスト）
 ```
+
+いずれも AWS へは接続せず、`MagicMock` と注入した sink / clock だけで完結するため、
+認証情報なしで実行できる。
 
 デプロイ後の実環境検証は：
 
@@ -454,11 +519,14 @@ GitHub Actions で Terraform の静的解析（Checkov）を自動実行して�
 
 | ワークフロー | ジョブ | 内容 |
 |---|---|---|
-|  | terraform fmt | フォーマット違反の検出 |
-|  | terraform validate | 構文・参照エラーの検出 |
-|  | Checkov セキュリティスキャン | IaC のセキュリティポリシー違反を検出（soft_fail: false） |
-|  | go vet + go test | Go Lambda（step1/step2）の静的解析・ユニットテスト |
-|  | tsc + Jest | TypeScript 型チェック・ユニットテスト（カバレッジ 100%） |
+| Terraform CI | terraform fmt | フォーマット違反の検出 |
+| Terraform CI | terraform validate | 構文・参照エラーの検出 |
+| Terraform CI | Checkov セキュリティスキャン | IaC のセキュリティポリシー違反を検出（soft_fail: false） |
+| Python Test | ruff / black | Python の静的解析・フォーマットチェック |
+| Python Test | lambda_src のユニットテスト | 共有ユーティリティと各 Lambda（394件） |
+| Python Test | scripts のユニットテスト | デプロイ後検証スクリプト（49件） |
+| Go Test | go vet + go test | Go Lambda（step1/step2）の静的解析・ユニットテスト |
+| TypeScript Test | tsc + Jest | TypeScript 型チェック・ユニットテスト |
 
 ### セキュリティ対応（Terraform で修正した内容）
 
