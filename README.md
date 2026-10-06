@@ -136,6 +136,7 @@ aws-step-functions-bedrock/
 │   ├── retry.py              # 指数バックオフ + フルジッターのリトライ
 │   ├── logger.py             # 機密情報マスキング付き構造化ロガー
 │   ├── metrics.py            # EMF による CloudWatch メトリクス発行
+│   ├── observability.py      # 上記3つをハンドラ向けに組み立てる
 │   ├── conftest.py           # テスト時に lambda_src を import パスへ追加
 │   ├── sfn-step1-transform/  # テキスト加工 Lambda
 │   └── sfn-step2-format/     # 最終整形 Lambda
@@ -158,7 +159,7 @@ aws-step-functions-bedrock/
 
 ---
 
-## 共有ユーティリティ（retry / logger / metrics）
+## 共有ユーティリティ（retry / logger / metrics / observability）
 
 `lambda_src` 直下に、各 Lambda から共有する運用品質向けのモジュールを置いている。
 いずれも AWS SDK に依存せず、**時刻・出力先・待機を注入できる**設計にしてあるため、
@@ -169,28 +170,39 @@ aws-step-functions-bedrock/
 | `retry.py` | AWS API 呼び出しの再試行 | 指数バックオフを上限でクランプし、**フルジッター**で散らす（thundering herd 防止）。元の例外はラップせず再送出するので、呼び出し側の `except ClientError` を壊さない |
 | `logger.py` | 構造化ログ | 1 行 JSON で出力し、Logs Insights から検索・集計できる。パスワードやトークンは**キー名の部分一致**でマスキングする |
 | `metrics.py` | メトリクス発行 | **EMF（Embedded Metric Format）** で 1 行 JSON を書き出し、CloudWatch Logs 側にメトリクスを抽出させる。`PutMetricData` を呼ばないので追加の API 呼び出しも IAM 権限も不要 |
+| `observability.py` | 上記 3 つの組み立て | 「どのハンドラでどう組み合わせるか」を 1 か所に寄せる。`retry_call` は `on_retry` を 1 つしか取らないため、ログとメトリクスの合成もここで引き受ける |
 
-3 つは互いに結線できる。リトライが起きたときにログとメトリクスの両方へ流す場合はこう書く。
+各ハンドラは `observability.py` 経由で 3 つをまとめて使う。
 
 ```python
-from logger import create_logger_from_env, retry_logger
-from metrics import create_metrics_from_env, retry_metrics
+from observability import observe, retry_hooks
 from retry import retry_call
 
-log = create_logger_from_env()
-metrics = create_metrics_from_env()
-metrics.set_dimensions(Service="transform", Environment="dev")
 
-def on_retry(attempt, delay, exc):
-    retry_logger(log, "Bedrock.InvokeModel")(attempt, delay, exc)
-    retry_metrics(metrics, "Bedrock.InvokeModel")(attempt, delay, exc)
-
-with metrics.timer("ProcessingLatency"):
-    result = retry_call(bedrock.invoke_model, on_retry=on_retry, **kwargs)
-
-metrics.add_metric("ProcessedItems", 1, unit="Count")
-metrics.flush()
+def lambda_handler(event, context, *, log=None, metrics=None):
+    # ステート名がログの共通フィールドと EMF のディメンションに載る
+    log, metrics = observe("step1_transform", log, metrics)
+    try:
+        with metrics.timer("BedrockLatency"):
+            result = retry_call(
+                bedrock.invoke_model,
+                on_retry=retry_hooks(log, metrics, "InvokeModel"),
+                **kwargs,
+            )
+        metrics.add_metric("Invocations", 1, unit="Count")
+        log.info("Bedrock への問い合わせが完了しました")
+        return result
+    except Exception as exc:
+        metrics.add_metric("Errors", 1, unit="Count")
+        log.error("Bedrock への問い合わせに失敗しました", error=exc)
+        raise
+    finally:
+        # 失敗時のレイテンシも見たいので、成否によらず必ず出す
+        metrics.flush()
 ```
+
+`log` / `metrics` をキーワード引数で受けるのは、テストから出力先を差し替えるため。
+Lambda ランタイムは第 3 引数以降を渡さないので、本番では環境変数から組み立てられる。
 
 ### 使ううえでの注意
 
@@ -203,10 +215,19 @@ metrics.flush()
   この 3 つは context から上書きできない。同じユーティリティを移植した
   他リポジトリの Go 版・TypeScript 版とも同じキー構成なので、
   Logs Insights のクエリをリポジトリ・言語をまたいで使い回せる
-  （本リポジトリの Go / TypeScript 実装への移植はまだ行っていない）
+  （本リポジトリでは TypeScript 版 `lambda_ts/src/shared/logger.ts` を移植済み。Go 実装は未着手）
 
-デプロイパッケージへの同梱は `modules/lambda` の `shared_modules` 変数で制御する
-（既定は `["retry.py"]`）。ハンドラから import するモジュールをここに追加すること。
+### ★ デプロイパッケージへの同梱
+
+結線してもデプロイ ZIP に入っていなければ、実行時に `ImportError` で落ちる。
+`modules/lambda` の `archive_file` は許可リスト方式なので、ハンドラから import する
+モジュールは `shared_modules` 変数へ必ず追加すること
+（既定は `["retry.py", "logger.py", "metrics.py", "observability.py"]`）。
+
+この同梱漏れは「結線したつもりが動かない」という形でしか表面化せず、
+ユニットテストでは気づけない。そのため
+`test_handler_observability.py::test_shared_modules_cover_every_import` で
+Terraform の既定値そのものをテストから検証している。
 
 ---
 
@@ -523,7 +544,7 @@ GitHub Actions で Terraform の静的解析（Checkov）を自動実行して�
 | Terraform CI | terraform validate | 構文・参照エラーの検出 |
 | Terraform CI | Checkov セキュリティスキャン | IaC のセキュリティポリシー違反を検出（soft_fail: false） |
 | Python Test | ruff / black | Python の静的解析・フォーマットチェック |
-| Python Test | lambda_src のユニットテスト | 共有ユーティリティと各 Lambda（394件） |
+| Python Test | lambda_src のユニットテスト | 共有ユーティリティと各 Lambda（408件） |
 | Python Test | scripts のユニットテスト | デプロイ後検証スクリプト（49件） |
 | Go Test | go vet + go test | Go Lambda（step1/step2）の静的解析・ユニットテスト |
 | TypeScript Test | tsc + Jest | TypeScript 型チェック・ユニットテスト |
