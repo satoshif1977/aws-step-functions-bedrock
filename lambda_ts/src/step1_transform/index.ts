@@ -10,6 +10,10 @@
  */
 
 import { DEFAULT_MESSAGE, transform, classifyByLength } from './helpers';
+import { handlerLogger } from "../shared/handler-logger";
+import type { HandlerOptions } from "../shared/handler-logger";
+
+export type { HandlerOptions } from "../shared/handler-logger";
 
 // ── 入出力型定義 ──────────────────────────────────────────────
 export interface Step1Event {
@@ -27,10 +31,22 @@ export interface Step1Response {
 export { transform, classifyByLength } from './helpers';
 
 // ── Lambda ハンドラー ─────────────────────────────────────────
-export const handler = async (event: Step1Event): Promise<Step1Response> => {
+export const handler = async (
+  event: Step1Event,
+  options: HandlerOptions = {},
+): Promise<Step1Response> => {
+  const log = handlerLogger("step1_transform", options.logger);
+  log.debug("入力を受け取りました", { hasMessage: event.message !== undefined });
+
   const message = event.message ?? DEFAULT_MESSAGE;
+  if (event.message === undefined) {
+    log.warn("message が無いため既定値を使います", { defaultUsed: true });
+  }
+
   const { transformed, length } = transform(message);
   const answerType = classifyByLength(length);
+
+  log.info("テキストを加工しました", { length, answerType });
 
   return {
     original: message,
