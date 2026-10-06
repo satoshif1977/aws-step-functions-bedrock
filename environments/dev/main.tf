@@ -78,6 +78,10 @@ module "lambda_step1" {
   env_vars = {
     # クロスリージョン推論プロファイル（Haiku 4.5 / 日本リージョン最適化）
     MODEL_ID = "jp.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+    # 観測設定。dev は debug まで出す（本番は info を想定）
+    LOG_LEVEL         = "debug"
+    METRICS_NAMESPACE = "StepFunctionsBedrock"
   }
 }
 
@@ -90,6 +94,10 @@ module "lambda_step2" {
   env_vars = {
     # クロスリージョン推論プロファイル（Haiku 4.5 / 日本リージョン最適化）
     MODEL_ID = "jp.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+    # 観測設定。dev は debug まで出す（本番は info を想定）
+    LOG_LEVEL         = "debug"
+    METRICS_NAMESPACE = "StepFunctionsBedrock"
   }
 }
 

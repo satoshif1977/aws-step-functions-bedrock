@@ -27,7 +27,10 @@ variable "log_retention_days" {
 variable "shared_modules" {
   description = "lambda_src 直下から各関数のデプロイパッケージへ同梱する共有モジュール（ファイル名）"
   type        = list(string)
-  default     = ["retry.py"]
+
+  # observability.py は logger.py / metrics.py / retry.py を import するため、
+  # 4 つをセットで同梱する。1 つでも欠けると Lambda 実行時に ImportError になる。
+  default = ["retry.py", "logger.py", "metrics.py", "observability.py"]
 }
 
 variable "env_vars" {
