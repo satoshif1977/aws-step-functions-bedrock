@@ -7,6 +7,10 @@
  */
 
 import { resolveLabel, formatResult } from './helpers';
+import { handlerLogger } from "../shared/handler-logger";
+import type { HandlerOptions } from "../shared/handler-logger";
+
+export type { HandlerOptions } from "../shared/handler-logger";
 
 // ── 入出力型定義 ──────────────────────────────────────────────
 export interface Step2Event {
@@ -24,11 +28,18 @@ export interface Step2Response {
 export { resolveLabel, formatResult } from './helpers';
 
 // ── Lambda ハンドラー ─────────────────────────────────────────
-export const handler = async (event: Step2Event): Promise<Step2Response> => {
+export const handler = async (
+  event: Step2Event,
+  options: HandlerOptions = {},
+): Promise<Step2Response> => {
+  const log = handlerLogger("step2_format", options.logger);
   const bedrockAnswer = event.bedrock_answer ?? "";
   const answerType = event.answer_type ?? "unknown";
 
+  log.debug("入力を受け取りました", { answerType, answerLength: bedrockAnswer.length });
+
   if (!bedrockAnswer) {
+    log.warn("Bedrock の応答が空のため整形をスキップします", { answerType, status: "empty" });
     return {
       result: "",
       answer_type: answerType,
@@ -36,8 +47,11 @@ export const handler = async (event: Step2Event): Promise<Step2Response> => {
     };
   }
 
+  const result = formatResult(bedrockAnswer, answerType);
+  log.info("応答を整形しました", { answerType, resultLength: result.length });
+
   return {
-    result: formatResult(bedrockAnswer, answerType),
+    result,
     answer_type: answerType,
     status: "success",
   };
