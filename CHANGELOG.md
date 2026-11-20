@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `lambda_ts/src/shared/metrics.ts`: CloudWatch EMF メトリクスユーティリティを追加
+  （`lambda_src/metrics.py`（Python 版）と出力キーを揃えた並置実装）
+- `lambda_ts/src/shared/observability.ts`: ハンドラ向けの組み立てを 1 か所に寄せる
+  （`lambda_src/observability.py` と 関数名・`Step` ディメンション・既定名前空間を揃えた）
+- 4 ステート全部への結線:
+  共通 `Invocations` / `Errors` / `HandlerLatency`、
+  step1 `DefaultMessageUsed` / `TextLength`、step2 `EmptyAnswer` / `ResultLength`、
+  step3 `Truncated` / `CharCount` / `WordCount`、step4 `ErrorNotification` / `TruncatedNotification`
+- `handler-metrics.test.ts` 30 件・`metrics.test.ts` 65 件を追加（合計 362 → 460 件）
+
+### Changed
+- `HandlerOptions` に `metrics` を追加（未指定時は `METRICS_NAMESPACE` から組み立てる）
+- 各ハンドラを try / catch / finally で包み、成否によらず flush する形に変更
+  （失敗時のレイテンシも見たいため。Python 版と同じ方針）
+
 ## [2.3.0] - 2026-07-10
 
 ### Added
