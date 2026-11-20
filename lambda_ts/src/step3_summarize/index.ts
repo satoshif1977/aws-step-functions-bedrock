@@ -11,8 +11,8 @@
 
 import { Metadata } from '../shared/types';
 import { buildMetadata } from './helpers';
-import { handlerLogger } from "../shared/handler-logger";
 import type { HandlerOptions } from "../shared/handler-logger";
+import { observe, recordMetrics } from "../shared/observability";
 
 export type { HandlerOptions } from "../shared/handler-logger";
 
@@ -40,32 +40,56 @@ export const handler = async (
   event: Step3Event,
   options: HandlerOptions = {},
 ): Promise<Step3Response> => {
-  const log = handlerLogger("step3_summarize", options.logger);
-  const result = event.result ?? "";
-  const answerType = event.answer_type ?? "unknown";
-  const status = event.status ?? "success";
+  const { log, metrics } = observe("step3_summarize", options);
+  const stopTimer = metrics?.timer("HandlerLatency");
 
-  log.debug("入力を受け取りました", { answerType, status });
+  try {
+    const result = event.result ?? "";
+    const answerType = event.answer_type ?? "unknown";
+    const status = event.status ?? "success";
 
-  const metadata = buildMetadata(result);
-  if (metadata.is_truncated) {
-    log.warn("本文が上限を超えたため切り捨てました", {
-      charCount: metadata.char_count,
+    log.debug("入力を受け取りました", { answerType, status });
+    recordMetrics(() => {
+      metrics?.count("Invocations");
+      metrics?.setProperty("answerType", answerType);
+      metrics?.setProperty("inputStatus", status);
+    });
+
+    const metadata = buildMetadata(result);
+    if (metadata.is_truncated) {
+      log.warn("本文が上限を超えたため切り捨てました", {
+        charCount: metadata.char_count,
+        answerType,
+      });
+      recordMetrics(() => metrics?.count("Truncated"));
+    }
+
+    log.info("要約メタデータを作成しました", {
       answerType,
+      status,
+      charCount: metadata.char_count,
+      wordCount: metadata.word_count,
+    });
+
+    recordMetrics(() => {
+      metrics?.putMetric("CharCount", metadata.char_count, { unit: "Count" });
+      metrics?.putMetric("WordCount", metadata.word_count, { unit: "Count" });
+    });
+
+    return {
+      summary: result,
+      answer_type: answerType,
+      status,
+      metadata,
+    };
+  } catch (error) {
+    recordMetrics(() => metrics?.count("Errors"));
+    throw error;
+  } finally {
+    // メトリクスは本処理の成否によらず必ず出す（失敗時のレイテンシも見たいため）
+    recordMetrics(() => {
+      stopTimer?.();
+      metrics?.flush();
     });
   }
-
-  log.info("要約メタデータを作成しました", {
-    answerType,
-    status,
-    charCount: metadata.char_count,
-    wordCount: metadata.word_count,
-  });
-
-  return {
-    summary: result,
-    answer_type: answerType,
-    status,
-    metadata,
-  };
 };

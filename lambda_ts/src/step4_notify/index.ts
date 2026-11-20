@@ -14,8 +14,8 @@
 import { Metadata } from '../shared/types';
 import { buildNotification } from './helpers';
 import type { Step4Event, Step4Response } from './helpers';
-import { handlerLogger } from "../shared/handler-logger";
 import type { HandlerOptions } from "../shared/handler-logger";
+import { observe, recordMetrics } from "../shared/observability";
 
 export type { HandlerOptions } from "../shared/handler-logger";
 
@@ -29,42 +29,66 @@ export const handler = async (
   event: Step4Event,
   options: HandlerOptions = {},
 ): Promise<Step4Response> => {
-  const log = handlerLogger("step4_notify", options.logger);
-  const defaultMetadata: Metadata = {
-    char_count: 0,
-    word_count: 0,
-    processed_at: new Date().toISOString(),
-    is_truncated: false,
-  };
+  const { log, metrics } = observe("step4_notify", options);
+  const stopTimer = metrics?.timer("HandlerLatency");
 
-  const normalized: Required<Step4Event> = {
-    summary: event.summary ?? "",
-    answer_type: event.answer_type ?? "unknown",
-    status: event.status ?? "success",
-    metadata: event.metadata ?? defaultMetadata,
-  };
+  try {
+    const defaultMetadata: Metadata = {
+      char_count: 0,
+      word_count: 0,
+      processed_at: new Date().toISOString(),
+      is_truncated: false,
+    };
 
-  if (normalized.status !== "success") {
-    log.warn("異常終了として通知します", {
+    const normalized: Required<Step4Event> = {
+      summary: event.summary ?? "",
+      answer_type: event.answer_type ?? "unknown",
+      status: event.status ?? "success",
+      metadata: event.metadata ?? defaultMetadata,
+    };
+
+    recordMetrics(() => {
+      metrics?.count("Invocations");
+      metrics?.setProperty("answerType", normalized.answer_type);
+      metrics?.setProperty("pipelineStatus", normalized.status);
+    });
+
+    if (normalized.status !== "success") {
+      log.warn("異常終了として通知します", {
+        status: normalized.status,
+        answerType: normalized.answer_type,
+      });
+      // パイプライン全体の失敗率はここで数える（最終ステートのため）
+      recordMetrics(() => metrics?.count("ErrorNotification"));
+    }
+    if (normalized.metadata.is_truncated) {
+      recordMetrics(() => metrics?.count("TruncatedNotification"));
+    }
+
+    const notification = buildNotification(normalized);
+    log.info("通知ペイロードを生成しました", {
       status: normalized.status,
       answerType: normalized.answer_type,
+      subject: notification.subject,
+      isTruncated: normalized.metadata.is_truncated,
+    });
+
+    return {
+      notification,
+      summary: normalized.summary,
+      answer_type: normalized.answer_type,
+      status: normalized.status,
+      metadata: normalized.metadata,
+      pipeline_completed_at: new Date().toISOString(),
+    };
+  } catch (error) {
+    recordMetrics(() => metrics?.count("Errors"));
+    throw error;
+  } finally {
+    // メトリクスは本処理の成否によらず必ず出す（失敗時のレイテンシも見たいため）
+    recordMetrics(() => {
+      stopTimer?.();
+      metrics?.flush();
     });
   }
-
-  const notification = buildNotification(normalized);
-  log.info("通知ペイロードを生成しました", {
-    status: normalized.status,
-    answerType: normalized.answer_type,
-    subject: notification.subject,
-    isTruncated: normalized.metadata.is_truncated,
-  });
-
-  return {
-    notification,
-    summary: normalized.summary,
-    answer_type: normalized.answer_type,
-    status: normalized.status,
-    metadata: normalized.metadata,
-    pipeline_completed_at: new Date().toISOString(),
-  };
 };

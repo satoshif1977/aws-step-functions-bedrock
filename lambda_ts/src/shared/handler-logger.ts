@@ -7,11 +7,14 @@
 
 import { createLoggerFromEnv } from "./logger";
 import type { Logger } from "./logger";
+import type { Metrics } from "./metrics";
 
 /** ハンドラに渡せる差し替え用オプション（テストから注入する） */
 export interface HandlerOptions {
   /** ログ出力先。省略時は環境変数からロガーを組み立てる */
   logger?: Logger;
+  /** メトリクスの記録先。省略時は環境変数から組み立てる（observability.ts） */
+  metrics?: Metrics;
 }
 
 /** step 名を共通フィールドに載せたロガーを返す */

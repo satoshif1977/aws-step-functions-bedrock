@@ -144,10 +144,13 @@ aws-step-functions-bedrock/
 ├── lambda_go/                # Go 並置実装
 │   ├── step1_transform/      # main.go + main_test.go
 │   └── step2_format/         # main.go + main_test.go
-├── lambda_ts/                # TypeScript 並置実装（Jest テスト・カバレッジ 100%）
+├── lambda_ts/                # TypeScript 並置実装（Jest テスト 460件）
 │   └── src/
+│       ├── shared/           # logger.ts / metrics.ts / observability.ts
 │       ├── step1_transform/  # index.ts + index.test.ts
-│       └── step2_format/     # index.ts + index.test.ts
+│       ├── step2_format/     # index.ts + index.test.ts
+│       ├── step3_summarize/  # index.ts + index.test.ts
+│       └── step4_notify/     # index.ts + index.test.ts
 ├── cloudformation/
 │   └── template.yaml         # CloudFormation 版（Terraform との比較用）
 ├── scripts/
@@ -215,7 +218,10 @@ Lambda ランタイムは第 3 引数以降を渡さないので、本番では�
   この 3 つは context から上書きできない。同じユーティリティを移植した
   他リポジトリの Go 版・TypeScript 版とも同じキー構成なので、
   Logs Insights のクエリをリポジトリ・言語をまたいで使い回せる
-  （本リポジトリでは TypeScript 版 `lambda_ts/src/shared/logger.ts` を移植済み。Go 実装は未着手）
+  （本リポジトリでは TypeScript 版を `lambda_ts/src/shared/` に移植済み。
+  `logger.ts` / `metrics.ts` / `observability.ts` の 3 つを、Python 版と
+  関数名・ディメンション名・既定の名前空間を揃えて 4 ステート全部に結線している。
+  Go 実装は未着手）
 
 ### ★ デプロイパッケージへの同梱
 
